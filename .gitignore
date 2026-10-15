@@ -1,0 +1,14 @@
+# Rust
+/target/
+**/target/
+Cargo.lock
+
+# Local REA / decompile scratch (large; regenerate via scripts)
+/tmp/
+*.jar
+
+# OS / editor
+.DS_Store
+.idea/
+*.swp
+*~

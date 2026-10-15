@@ -1,0 +1,10 @@
+[package]
+name = "grip"
+version = "0.1.0"
+edition = "2021"
+description = "Grip knowledge base — DataGrip REA architecture audit reports"
+license = "MIT"
+
+[lib]
+name = "grip"
+path = "src/lib.rs"

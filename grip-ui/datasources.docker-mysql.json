@@ -1,0 +1,15 @@
+[
+  {
+    "id": 1,
+    "name": "MySQL 8.4 @localhost",
+    "vendor": "MySQL",
+    "host": "localhost",
+    "port": 3306,
+    "database": "mysql",
+    "user": "root",
+    "password": "88888888",
+    "jdbc_url": "jdbc:mysql://localhost:3306/mysql",
+    "use_url": false,
+    "remember_password": true
+  }
+]
