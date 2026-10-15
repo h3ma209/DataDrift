@@ -16,3 +16,10 @@ mysql = "23"
 url = "2"
 arabic_reshaper = "0.4"
 unicode-bidi = "0.3"
+# Native drivers (no JVM) — DataGrip vendor parity subset
+tokio = { version = "1", features = ["rt", "macros", "time", "net", "io-util"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+scylla = "0.15"
+mongodb = "3"
+redis = { version = "0.27", default-features = false, features = ["aio", "tokio-comp"] }
+futures-util = "0.3"

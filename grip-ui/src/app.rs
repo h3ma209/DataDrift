@@ -2,6 +2,7 @@ use crate::connection::{ConnectionWorker, WorkerRequest, WorkerResponse};
 use crate::explorer::{self, ExplorerState};
 use crate::jdbc::validation_errors;
 use crate::model::{DataSource, DbVendor};
+use crate::history::{self, HistoryEntry};
 use crate::reports::ReportsBrowser;
 use crate::store;
 use crate::theme::JetBrainsDark;
@@ -31,6 +32,7 @@ pub struct GripApp {
 enum ServicesTab {
     Output,
     Result,
+    History,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -93,9 +95,28 @@ impl GripApp {
     fn run_query(&mut self, mut ds: DataSource, sql: String, tab_id: u64) {
         // Apply console schema as default database when set (MySQL USE equivalent).
         if !self.current_schema.is_empty()
-            && matches!(ds.vendor, DbVendor::MySQL | DbVendor::PostgreSQL)
+            && matches!(
+                ds.vendor,
+                DbVendor::MySQL
+                    | DbVendor::MariaDB
+                    | DbVendor::PostgreSQL
+                    | DbVendor::Redshift
+                    | DbVendor::ClickHouse
+                    | DbVendor::Cassandra
+                    | DbVendor::MongoDB
+                    | DbVendor::Redis
+            )
         {
-            ds.database = self.current_schema.clone();
+            // Redis: schema tree is `dbN` — strip prefix for index
+            if ds.vendor == DbVendor::Redis {
+                let idx = self
+                    .current_schema
+                    .strip_prefix("db")
+                    .unwrap_or(&self.current_schema);
+                ds.database = idx.to_string();
+            } else {
+                ds.database = self.current_schema.clone();
+            }
         }
         self.last_sql = sql.clone();
         self.busy = true;
@@ -172,9 +193,25 @@ impl GripApp {
                             .apply_query_result(tab_id, columns, rows);
                         self.log(true, format!("Execute: {message}"));
                         self.services_tab = ServicesTab::Result;
+                        history::push(HistoryEntry {
+                            at: chrono_now(),
+                            vendor: self.active_ds().vendor.label().into(),
+                            source: self.active_ds().tree_label(),
+                            sql: self.last_sql.clone(),
+                            ok: true,
+                            message: message.clone(),
+                        });
                     } else {
                         self.log(false, format!("Execute failed: {message}"));
                         self.services_tab = ServicesTab::Output;
+                        history::push(HistoryEntry {
+                            at: chrono_now(),
+                            vendor: self.active_ds().vendor.label().into(),
+                            source: self.active_ds().tree_label(),
+                            sql: self.last_sql.clone(),
+                            ok: false,
+                            message: message.clone(),
+                        });
                     }
                 }
             }
@@ -416,6 +453,7 @@ impl GripApp {
 
         let schemas = self.schema_names_for_active();
         let ds_label = self.active_ds().tree_label();
+        let supports_explain = self.active_ds().vendor.supports_sql_explain();
         let mut ws_action = workspace::WorkspaceAction::default();
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(JetBrainsDark::EDITOR))
@@ -429,6 +467,7 @@ impl GripApp {
                         schemas: &schemas,
                         current_schema: &mut self.current_schema,
                         tx_auto: true,
+                        supports_explain,
                     })
                 } else {
                     None
@@ -447,6 +486,24 @@ impl GripApp {
             } else {
                 self.log(false, "Fix data source settings first");
             }
+        }
+        if let Some(sql) = ws_action.explain_sql {
+            let ds = self.active_ds().clone();
+            let wrapped = workspace::wrap_explain(ds.vendor, &sql);
+            if validation_errors(&ds).is_empty() {
+                self.run_query(ds, wrapped, 0);
+                self.services_tab = ServicesTab::Result;
+            }
+        }
+        if ws_action.export_csv {
+            let grid = match &self.workspace.tabs[self.workspace.active] {
+                WorkspaceTab::Console { result, .. } | WorkspaceTab::TableData { result, .. } => {
+                    result.clone()
+                }
+            };
+            let csv = workspace::grid_to_csv(&grid);
+            ctx.copy_text(csv);
+            self.log(true, "Copied CSV to clipboard");
         }
         if ws_action.refresh_table {
             if let WorkspaceTab::TableData {
@@ -522,6 +579,7 @@ impl GripApp {
                     ui.separator();
                     ui.selectable_value(&mut self.services_tab, ServicesTab::Output, "Output");
                     ui.selectable_value(&mut self.services_tab, ServicesTab::Result, "Result");
+                    ui.selectable_value(&mut self.services_tab, ServicesTab::History, "History");
                     if self.busy {
                         ui.label(
                             RichText::new("Running…")
@@ -604,6 +662,52 @@ impl GripApp {
                                         );
                                     }
                                 }
+                                ServicesTab::History => {
+                                    let entries = history::load();
+                                    if entries.is_empty() {
+                                        ui.label(
+                                            RichText::new(
+                                                "No history yet (~/.grip/query_history.json)",
+                                            )
+                                            .small()
+                                            .color(JetBrainsDark::TEXT_DIM),
+                                        );
+                                    }
+                                    let mut restore: Option<String> = None;
+                                    for e in entries.iter().take(50) {
+                                        let mark = if e.ok { "✓" } else { "✗" };
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "{mark} {} · {}",
+                                                    e.at, e.vendor
+                                                ))
+                                                .small()
+                                                .color(JetBrainsDark::TEXT_DIM),
+                                            );
+                                            if ui.small_button("↩").on_hover_text("Restore to console").clicked()
+                                            {
+                                                restore = Some(e.sql.clone());
+                                            }
+                                        });
+                                        ui.label(
+                                            RichText::new(truncate_sql(&e.sql, 80))
+                                                .small()
+                                                .monospace()
+                                                .color(JetBrainsDark::TEXT),
+                                        );
+                                        ui.separator();
+                                    }
+                                    if let Some(sql) = restore {
+                                        if let WorkspaceTab::Console { sql: buf, .. } =
+                                            &mut self.workspace.tabs[0]
+                                        {
+                                            *buf = format!("{sql}\n");
+                                        }
+                                        self.workspace.active = 0;
+                                        self.log(true, "Restored SQL from history");
+                                    }
+                                }
                             }
                         });
                 });
@@ -639,16 +743,19 @@ impl GripApp {
                             ui.text_edit_singleline(&mut ds.name);
                             ui.add_space(4.0);
                             ui.label("Connection type");
+                            let prev = ds.vendor;
                             egui::ComboBox::from_id_salt("vendor")
                                 .selected_text(ds.vendor.label())
+                                .width(160.0)
                                 .show_ui(ui, |ui| {
-                                    for v in
-                                        [DbVendor::PostgreSQL, DbVendor::MySQL, DbVendor::Sqlite]
-                                    {
-                                        ui.selectable_value(&mut ds.vendor, v, v.label());
+                                    for v in DbVendor::ALL {
+                                        ui.selectable_value(&mut ds.vendor, *v, v.label());
                                     }
                                 });
-                            if ds.vendor != DbVendor::Sqlite {
+                            if ds.vendor != prev {
+                                ds.apply_vendor_defaults();
+                            }
+                            if !ds.vendor.uses_file_path() {
                                 ui.horizontal(|ui| {
                                     ui.label("Host");
                                     ui.text_edit_singleline(&mut ds.host);
@@ -660,13 +767,9 @@ impl GripApp {
                                     );
                                 });
                             }
-                            ui.label(if ds.vendor == DbVendor::Sqlite {
-                                "Database file (or :memory:)"
-                            } else {
-                                "Database"
-                            });
+                            ui.label(ds.vendor.database_label());
                             ui.text_edit_singleline(&mut ds.database);
-                            if ds.vendor != DbVendor::Sqlite {
+                            if !ds.vendor.uses_file_path() {
                                 ui.label("User");
                                 ui.text_edit_singleline(&mut ds.user);
                                 ui.horizontal(|ui| {
@@ -692,8 +795,21 @@ impl GripApp {
                             }
                         }
                         DialogTab::Driver => {
-                            ui.label("Driver class");
+                            ui.label("DataGrip JDBC class (reference only)");
                             ui.monospace(ds.vendor.driver_class());
+                            ui.add_space(6.0);
+                            ui.label("Grip native Rust driver");
+                            ui.monospace(ds.vendor.rust_driver());
+                            ui.add_space(8.0);
+                            ui.label(RichText::new("Bundled vendors").strong());
+                            for v in DbVendor::ALL {
+                                ui.label(format!(
+                                    "• {} — port {} — {}",
+                                    v.label(),
+                                    v.default_port(),
+                                    v.rust_driver()
+                                ));
+                            }
                         }
                     }
                 }
@@ -753,4 +869,13 @@ fn truncate_sql(s: &str, max: usize) -> String {
         let t: String = one.chars().take(max.saturating_sub(1)).collect();
         format!("{t}…")
     }
+}
+
+fn chrono_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{secs}")
 }

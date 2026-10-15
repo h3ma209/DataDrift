@@ -59,17 +59,25 @@ impl ExplorerState {
 
 pub fn vendor_color(v: DbVendor) -> Color32 {
     match v {
-        DbVendor::MySQL => Color32::from_rgb(0, 120, 215),
-        DbVendor::PostgreSQL => Color32::from_rgb(59, 115, 175),
+        DbVendor::MySQL | DbVendor::MariaDB => Color32::from_rgb(0, 120, 215),
+        DbVendor::PostgreSQL | DbVendor::Redshift => Color32::from_rgb(59, 115, 175),
         DbVendor::Sqlite => Color32::from_rgb(45, 160, 120),
+        DbVendor::ClickHouse => Color32::from_rgb(255, 204, 0),
+        DbVendor::Cassandra => Color32::from_rgb(60, 140, 120),
+        DbVendor::MongoDB => Color32::from_rgb(0, 150, 80),
+        DbVendor::Redis => Color32::from_rgb(200, 60, 50),
     }
 }
 
 pub fn vendor_icon(v: DbVendor) -> &'static str {
     match v {
-        DbVendor::MySQL => "🐬",
-        DbVendor::PostgreSQL => "🐘",
+        DbVendor::MySQL | DbVendor::MariaDB => "🐬",
+        DbVendor::PostgreSQL | DbVendor::Redshift => "🐘",
         DbVendor::Sqlite => "📄",
+        DbVendor::ClickHouse => "▮",
+        DbVendor::Cassandra => "◉",
+        DbVendor::MongoDB => "🍃",
+        DbVendor::Redis => "◆",
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::jdbc::{parse_and_validate, ParsedJdbc};
 use mysql::prelude::Queryable;
-use crate::model::{DataSource, DbVendor, SchemaNode};
+use crate::model::{DataSource, SchemaNode, VendorWire};
 use postgres::{Client, NoTls};
 use rusqlite::Connection as SqliteConn;
 use std::sync::mpsc;
@@ -127,8 +127,11 @@ fn resolve(ds: &DataSource) -> Result<ParsedJdbc, String> {
 
 fn test_connection(ds: &DataSource) -> Result<String, String> {
     let p = resolve(ds)?;
-    match p.vendor {
-        DbVendor::PostgreSQL => {
+    match p.vendor.wire() {
+        VendorWire::ClickHouse | VendorWire::Cassandra | VendorWire::Mongo | VendorWire::Redis => {
+            crate::drivers::test(ds, &p)
+        }
+        VendorWire::Postgres => {
             let conn_str = format!(
                 "host={} port={} dbname={} user={} password={} connect_timeout=5",
                 p.host, p.port, p.database, ds.user, ds.password
@@ -140,7 +143,7 @@ fn test_connection(ds: &DataSource) -> Result<String, String> {
             let ver: String = row.get(0);
             Ok(format!("{ver}"))
         }
-        DbVendor::MySQL => {
+        VendorWire::Mysql => {
             let opts = mysql::OptsBuilder::new()
                 .ip_or_hostname(Some(p.host.as_str()))
                 .tcp_port(p.port)
@@ -153,9 +156,9 @@ fn test_connection(ds: &DataSource) -> Result<String, String> {
             let ver: Option<String> = conn
                 .query_first("SELECT VERSION()")
                 .map_err(|e| e.to_string())?;
-            Ok(ver.unwrap_or_else(|| "MySQL".into()))
+            Ok(ver.unwrap_or_else(|| "MySQL/MariaDB".into()))
         }
-        DbVendor::Sqlite => {
+        VendorWire::Sqlite => {
             let path = if p.database == ":memory:" {
                 ":memory:"
             } else {
@@ -173,8 +176,11 @@ fn test_connection(ds: &DataSource) -> Result<String, String> {
 fn connect_and_introspect(ds: &DataSource) -> Result<(Vec<SchemaNode>, usize), String> {
     test_connection(ds)?;
     let p = resolve(ds)?;
-    match p.vendor {
-        DbVendor::PostgreSQL => {
+    match p.vendor.wire() {
+        VendorWire::ClickHouse | VendorWire::Cassandra | VendorWire::Mongo | VendorWire::Redis => {
+            crate::drivers::introspect(ds, &p)
+        }
+        VendorWire::Postgres => {
             let conn_str = format!(
                 "host={} port={} dbname={} user={} password={}",
                 p.host, p.port, p.database, ds.user, ds.password
@@ -203,7 +209,7 @@ fn connect_and_introspect(ds: &DataSource) -> Result<(Vec<SchemaNode>, usize), S
                 .get(0);
             Ok((schemas, total as usize))
         }
-        DbVendor::MySQL => {
+        VendorWire::Mysql => {
             let opts = mysql::OptsBuilder::new()
                 .ip_or_hostname(Some(p.host.as_str()))
                 .tcp_port(p.port)
@@ -228,7 +234,7 @@ fn connect_and_introspect(ds: &DataSource) -> Result<(Vec<SchemaNode>, usize), S
                 .map_err(|e| e.to_string())?;
             Ok((schemas, total.unwrap_or(0) as usize))
         }
-        DbVendor::Sqlite => {
+        VendorWire::Sqlite => {
             let path = if p.database == ":memory:" {
                 ":memory:"
             } else {
@@ -268,7 +274,7 @@ fn group_schema_tables(pairs: Vec<(String, String)>) -> Vec<SchemaNode> {
         .collect()
 }
 
-fn query_result(
+pub fn query_result_pub(
     tab_id: u64,
     ok: bool,
     message: impl Into<String>,
@@ -284,6 +290,16 @@ fn query_result(
     }
 }
 
+fn query_result(
+    tab_id: u64,
+    ok: bool,
+    message: impl Into<String>,
+    columns: Vec<String>,
+    rows: Vec<Vec<String>>,
+) -> WorkerResponse {
+    query_result_pub(tab_id, ok, message, columns, rows)
+}
+
 fn run_query(ds: &DataSource, sql: &str, tab_id: u64) -> WorkerResponse {
     let sql = sql.trim();
     if sql.is_empty() {
@@ -293,8 +309,11 @@ fn run_query(ds: &DataSource, sql: &str, tab_id: u64) -> WorkerResponse {
         Ok(p) => p,
         Err(e) => return query_result(tab_id, false, e, vec![], vec![]),
     };
-    match p.vendor {
-        DbVendor::PostgreSQL => {
+    match p.vendor.wire() {
+        VendorWire::ClickHouse | VendorWire::Cassandra | VendorWire::Mongo | VendorWire::Redis => {
+            return crate::drivers::query(ds, &p, sql, tab_id);
+        }
+        VendorWire::Postgres => {
             let conn_str = format!(
                 "host={} port={} dbname={} user={} password={}",
                 p.host, p.port, p.database, ds.user, ds.password
@@ -334,7 +353,7 @@ fn run_query(ds: &DataSource, sql: &str, tab_id: u64) -> WorkerResponse {
                 Err(e) => query_result(tab_id, false, e.to_string(), vec![], vec![]),
             }
         }
-        DbVendor::Sqlite => {
+        VendorWire::Sqlite => {
             let path = if p.database == ":memory:" {
                 ":memory:"
             } else {
@@ -377,7 +396,7 @@ fn run_query(ds: &DataSource, sql: &str, tab_id: u64) -> WorkerResponse {
                 Err(e) => query_result(tab_id, false, e.to_string(), vec![], vec![]),
             }
         }
-        DbVendor::MySQL => {
+        VendorWire::Mysql => {
             let opts = mysql::OptsBuilder::new()
                 .ip_or_hostname(Some(p.host.as_str()))
                 .tcp_port(p.port)

@@ -144,6 +144,10 @@ pub struct WorkspaceAction {
     pub execute_sql: Option<String>,
     pub close_tab: bool,
     pub schema_pick: Option<String>,
+    /// Guide §7 — export result grid as CSV to clipboard.
+    pub export_csv: bool,
+    /// Guide §7.1 — EXPLAIN plan for current statement.
+    pub explain_sql: Option<String>,
 }
 
 impl Default for WorkspaceAction {
@@ -153,6 +157,8 @@ impl Default for WorkspaceAction {
             execute_sql: None,
             close_tab: false,
             schema_pick: None,
+            export_csv: false,
+            explain_sql: None,
         }
     }
 }
@@ -163,6 +169,7 @@ pub struct ConsoleChrome<'a> {
     pub schemas: &'a [String],
     pub current_schema: &'a mut String,
     pub tx_auto: bool,
+    pub supports_explain: bool,
 }
 
 pub fn ui(
@@ -264,6 +271,23 @@ fn console_view(
             .clicked()
         {
             action.execute_sql = Some(crate::sql::execute_target(sql, sql.len(), None));
+        }
+        if chrome.as_ref().map(|c| c.supports_explain).unwrap_or(false)
+            && ui
+                .add_enabled(!busy, egui::Button::new("Explain"))
+                .on_hover_text("EXPLAIN plan (guide §7.1)")
+                .clicked()
+        {
+            let stmt = crate::sql::execute_target(sql, sql.len(), None);
+            action.explain_sql = Some(stmt);
+        }
+        if !result.columns.is_empty()
+            && ui
+                .button("Export CSV")
+                .on_hover_text("Copy result grid as CSV (guide §7 / §10)")
+                .clicked()
+        {
+            action.export_csv = true;
         }
         if let Some(ref mut ch) = chrome {
             ui.separator();
@@ -381,7 +405,57 @@ fn table_view(
                 .small()
                 .color(JetBrainsDark::TEXT_DIM),
         );
+        if !result.columns.is_empty()
+            && ui
+                .small_button("Export CSV")
+                .on_hover_text("Copy as CSV")
+                .clicked()
+        {
+            action.export_csv = true;
+        }
     });
+}
+
+/// TSV/CSV for clipboard export (DataGrip Export → Clipboard).
+pub fn grid_to_csv(data: &GridData) -> String {
+    let mut out = String::new();
+    let escape = |s: &str| {
+        if s.contains(',') || s.contains('"') || s.contains('\n') {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_string()
+        }
+    };
+    out.push_str(
+        &data
+            .columns
+            .iter()
+            .map(|c| escape(c))
+            .collect::<Vec<_>>()
+            .join(","),
+    );
+    out.push('\n');
+    for row in &data.rows {
+        out.push_str(
+            &row.iter()
+                .map(|c| escape(c))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        out.push('\n');
+    }
+    out
+}
+
+pub fn wrap_explain(vendor: DbVendor, sql: &str) -> String {
+    let s = sql.trim().trim_end_matches(';');
+    match vendor {
+        DbVendor::PostgreSQL | DbVendor::Redshift => format!("EXPLAIN {s}"),
+        DbVendor::MySQL | DbVendor::MariaDB => format!("EXPLAIN {s}"),
+        DbVendor::Sqlite => format!("EXPLAIN QUERY PLAN {s}"),
+        DbVendor::ClickHouse => format!("EXPLAIN {s}"),
+        _ => s.to_string(),
+    }
 }
 
 const CELL_PAD_X: f32 = 10.0;
@@ -565,9 +639,19 @@ pub fn build_table_sql_filtered(
     limit: u32,
 ) -> String {
     let from = match vendor {
-        DbVendor::MySQL => format!("`{schema}`.`{table}`"),
-        DbVendor::PostgreSQL => format!("\"{schema}\".\"{table}\""),
+        DbVendor::MySQL | DbVendor::MariaDB => format!("`{schema}`.`{table}`"),
+        DbVendor::PostgreSQL | DbVendor::Redshift => format!("\"{schema}\".\"{table}\""),
         DbVendor::Sqlite => format!("\"{table}\""),
+        DbVendor::ClickHouse => format!("`{schema}`.`{table}`"),
+        DbVendor::Cassandra => format!("{schema}.{table}"),
+        DbVendor::Redis => {
+            let _ = (schema, where_clause, order_clause, limit);
+            return format!("GET {table}");
+        }
+        DbVendor::MongoDB => {
+            // Console uses find syntax, not SQL SELECT
+            return format!("db.{table}.find({{}});");
+        }
     };
     let mut sql = format!("SELECT * FROM {from}");
     let w = where_clause.trim();

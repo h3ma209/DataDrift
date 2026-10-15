@@ -46,6 +46,8 @@ macOS .app bundle
 
 | Report | Topic |
 |--------|--------|
+| [16-datagrip-driver-url-templates.md](./16-datagrip-driver-url-templates.md) | **Driver URLs** — extracted DG `*-drivers.xml` → Grip native vendor map |
+| [15-native-drivers.md](./15-native-drivers.md) | **Grip recreation** — pure-Rust drivers (PG/MySQL/Maria/SQLite/CH/Cassandra/Mongo/Redis/Redshift) |
 | [14-datagrip-reference-guide.md](./14-datagrip-reference-guide.md) | **Product guide** — DataGrip workflow / windows / menus map for Grip recreation |
 | [13-ui-validation.md](./13-ui-validation.md) | **Phase 2c** — UI validation runbook (Refresh / Select In / SqlResolve click paths + log scrapers) |
 | [12-dynamic-validation-2b.md](./12-dynamic-validation-2b.md) | **Phase 2b** — resolve→`RunIntrospection` bytecode, sync procedure, PasswordSafe service-name, UI/Frida recipes |

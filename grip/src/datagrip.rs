@@ -203,6 +203,22 @@ const REPORTS: &[Report] = &[
         kind: ReportKind::Guide,
         markdown: include_str!("../../reports/14-datagrip-reference-guide.md"),
     },
+    Report {
+        id: "15-native-drivers",
+        file: "15-native-drivers.md",
+        title: "Grip native drivers (pure Rust)",
+        subsystem: None,
+        kind: ReportKind::Guide,
+        markdown: include_str!("../../reports/15-native-drivers.md"),
+    },
+    Report {
+        id: "16-datagrip-driver-url-templates",
+        file: "16-datagrip-driver-url-templates.md",
+        title: "DataGrip driver URL templates → Grip map",
+        subsystem: None,
+        kind: ReportKind::Guide,
+        markdown: include_str!("../../reports/16-datagrip-driver-url-templates.md"),
+    },
 ];
 
 #[cfg(test)]
@@ -210,8 +226,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_has_sixteen_reports() {
-        assert_eq!(reports().len(), 16);
+    fn catalog_has_eighteen_reports() {
+        assert_eq!(reports().len(), 18);
         assert!(report_by_id("13-ui-validation").is_some());
         assert_eq!(
             report_by_id("13-ui-validation").unwrap().kind,

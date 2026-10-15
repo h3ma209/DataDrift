@@ -1,6 +1,9 @@
 mod app;
+mod async_rt;
 mod connection;
+mod drivers;
 mod explorer;
+mod history;
 mod jdbc;
 mod model;
 mod mysql_format;
