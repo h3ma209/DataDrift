@@ -111,7 +111,7 @@ fn worker_loop(req_rx: mpsc::Receiver<WorkerRequest>, resp_tx: mpsc::Sender<Work
     }
 }
 
-fn resolve(ds: &DataSource) -> Result<ParsedJdbc, String> {
+pub fn resolve(ds: &DataSource) -> Result<ParsedJdbc, String> {
     if ds.use_url {
         parse_and_validate(&ds.jdbc_url)
     } else {
@@ -125,7 +125,7 @@ fn resolve(ds: &DataSource) -> Result<ParsedJdbc, String> {
     }
 }
 
-fn test_connection(ds: &DataSource) -> Result<String, String> {
+pub fn test_connection(ds: &DataSource) -> Result<String, String> {
     let p = resolve(ds)?;
     match p.vendor.wire() {
         VendorWire::ClickHouse | VendorWire::Cassandra | VendorWire::Mongo | VendorWire::Redis => {
@@ -173,7 +173,7 @@ fn test_connection(ds: &DataSource) -> Result<String, String> {
     }
 }
 
-fn connect_and_introspect(ds: &DataSource) -> Result<(Vec<SchemaNode>, usize), String> {
+pub fn connect_and_introspect(ds: &DataSource) -> Result<(Vec<SchemaNode>, usize), String> {
     test_connection(ds)?;
     let p = resolve(ds)?;
     match p.vendor.wire() {
@@ -300,7 +300,7 @@ fn query_result(
     query_result_pub(tab_id, ok, message, columns, rows)
 }
 
-fn run_query(ds: &DataSource, sql: &str, tab_id: u64) -> WorkerResponse {
+pub fn run_query(ds: &DataSource, sql: &str, tab_id: u64) -> WorkerResponse {
     let sql = sql.trim();
     if sql.is_empty() {
         return query_result(tab_id, false, "Empty statement", vec![], vec![]);

@@ -7,12 +7,12 @@ Rust workspace:
 | Crate | Role |
 |-------|------|
 | [`grip`](grip/) | Knowledge lib — embeds `reports/*.md`, exposes `grip::datagrip::reports()` |
-| [`grip-ui`](grip-ui/) | DataGrip-style shell (connections, schema tree, SQL console) |
+| [`grip-ui`](grip-ui/) | **Dioxus desktop** shell — modern UI + pure-Rust drivers |
 
 ```bash
 cargo check          # workspace
 cargo test -p grip   # report catalog tests
-cd grip-ui && cargo run --release
+cargo run -p grip-ui # Dioxus desktop (webview)
 ```
 
 ## Reports (markdown assets)

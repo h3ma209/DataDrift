@@ -1,25 +1,22 @@
 [package]
 name = "grip-ui"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
-description = "DataGrip-style connection shell (Grip recreation)"
+description = "Grip — modern DataGrip-style database shell (Dioxus)"
 
 [dependencies]
 grip = { path = "../grip" }
-eframe = { version = "0.29", default-features = true, features = ["default_fonts", "glow"] }
-egui = "0.29"
+dioxus = { version = "0.6", features = ["desktop"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 postgres = "0.19"
 mysql = "23"
 url = "2"
-arabic_reshaper = "0.4"
-unicode-bidi = "0.3"
-# Native drivers (no JVM) — DataGrip vendor parity subset
-tokio = { version = "1", features = ["rt", "macros", "time", "net", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 scylla = "0.15"
 mongodb = "3"
 redis = { version = "0.27", default-features = false, features = ["aio", "tokio-comp"] }
 futures-util = "0.3"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }

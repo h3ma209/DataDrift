@@ -1,0 +1,10 @@
+[application]
+name = "Grip"
+default_platform = "desktop"
+
+[web.app]
+title = "Grip"
+
+[bundle]
+identifier = "dev.grip.app"
+publisher = "Grip"
