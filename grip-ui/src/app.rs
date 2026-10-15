@@ -18,9 +18,19 @@ pub struct GripApp {
     explorer: ExplorerState,
     workspace: Workspace,
     console: Vec<(bool, String)>,
+    /// Last executed SQL (Services Output).
+    last_sql: String,
+    current_schema: String,
+    services_tab: ServicesTab,
     busy: bool,
     worker: ConnectionWorker,
     status_cursor: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ServicesTab {
+    Output,
+    Result,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -56,8 +66,12 @@ impl GripApp {
             workspace: Workspace::default(),
             console: vec![(
                 true,
-                "Grip — Audit tab browses embedded REA reports; Shell is the DB recreation.".into(),
+                "Grip — DB shell follows DataGrip workflow (see Audit → 14-datagrip-reference-guide)."
+                    .into(),
             )],
+            last_sql: String::new(),
+            current_schema: String::new(),
+            services_tab: ServicesTab::Output,
             busy: false,
             worker: ConnectionWorker::spawn(),
             status_cursor: "1:1".into(),
@@ -76,9 +90,27 @@ impl GripApp {
         self.console.push((ok, msg.into()));
     }
 
-    fn run_query(&mut self, ds: DataSource, sql: String, tab_id: u64) {
+    fn run_query(&mut self, mut ds: DataSource, sql: String, tab_id: u64) {
+        // Apply console schema as default database when set (MySQL USE equivalent).
+        if !self.current_schema.is_empty()
+            && matches!(ds.vendor, DbVendor::MySQL | DbVendor::PostgreSQL)
+        {
+            ds.database = self.current_schema.clone();
+        }
+        self.last_sql = sql.clone();
         self.busy = true;
+        self.log(true, format!("→ {sql}"));
         self.worker.send(WorkerRequest::Query { ds, sql, tab_id });
+        self.services_tab = ServicesTab::Output;
+    }
+
+    fn schema_names_for_active(&self) -> Vec<String> {
+        let id = self.active_ds().id;
+        self.explorer
+            .schemas
+            .get(&id)
+            .map(|v| v.iter().map(|s| s.name.clone()).collect())
+            .unwrap_or_default()
     }
 
     fn poll_worker(&mut self) {
@@ -139,8 +171,10 @@ impl GripApp {
                         self.workspace
                             .apply_query_result(tab_id, columns, rows);
                         self.log(true, format!("Execute: {message}"));
+                        self.services_tab = ServicesTab::Result;
                     } else {
                         self.log(false, format!("Execute failed: {message}"));
+                        self.services_tab = ServicesTab::Output;
                     }
                 }
             }
@@ -346,26 +380,72 @@ impl GripApp {
         }
         if let Some(i) = explorer_hit.select_source {
             self.active_source = i;
+            let db = self.sources[i].database.clone();
+            if self.current_schema.is_empty() {
+                self.current_schema = db;
+            }
         }
         if let Some((schema, table)) = explorer_hit.open_table {
             self.open_table_tab(schema, table);
         }
+        if let Some((schema, table)) = explorer_hit.console_select {
+            self.current_schema = schema.clone();
+            self.workspace.active = 0;
+            let q = workspace::build_table_sql(self.active_ds().vendor, &schema, &table, 200);
+            if let WorkspaceTab::Console { sql, .. } = &mut self.workspace.tabs[0] {
+                *sql = format!("{q};\n");
+            }
+            self.log(true, format!("Console ← {schema}.{table}"));
+        }
+        if let Some((schema, table)) = explorer_hit.copy_ddl {
+            let ddl = format!(
+                "-- Grip stub DDL (full introspect TBD)\nCREATE TABLE `{schema}`.`{table}` (/* … */);\n"
+            );
+            ctx.copy_text(ddl);
+            self.log(true, format!("Copied CREATE stub for {schema}.{table}"));
+        }
+        if let Some(schema) = explorer_hit.set_schema {
+            self.current_schema = schema.clone();
+            self.log(true, format!("Current schema → {schema}"));
+        }
 
+        // Sync default schema from DS when empty after connect
+        if self.current_schema.is_empty() {
+            self.current_schema = self.active_ds().database.clone();
+        }
+
+        let schemas = self.schema_names_for_active();
+        let ds_label = self.active_ds().tree_label();
         let mut ws_action = workspace::WorkspaceAction::default();
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(JetBrainsDark::EDITOR))
             .show(ctx, |ui| {
-                ws_action = workspace::ui(&mut self.workspace, ui, self.busy);
+                let chrome = if matches!(
+                    self.workspace.tabs.get(self.workspace.active),
+                    Some(WorkspaceTab::Console { .. })
+                ) {
+                    Some(workspace::ConsoleChrome {
+                        ds_label: &ds_label,
+                        schemas: &schemas,
+                        current_schema: &mut self.current_schema,
+                        tx_auto: true,
+                    })
+                } else {
+                    None
+                };
+                ws_action = workspace::ui(&mut self.workspace, ui, self.busy, chrome);
             });
 
-        if ws_action.run_console {
+        if let Some(schema) = ws_action.schema_pick {
+            self.current_schema = schema;
+        }
+        if let Some(sql) = ws_action.execute_sql {
             let ds = self.active_ds().clone();
             if validation_errors(&ds).is_empty() {
-                let sql = match &self.workspace.tabs[self.workspace.active] {
-                    WorkspaceTab::Console { sql, .. } => sql.clone(),
-                    _ => String::new(),
-                };
                 self.run_query(ds, sql, 0);
+                self.services_tab = ServicesTab::Result;
+            } else {
+                self.log(false, "Fix data source settings first");
             }
         }
         if ws_action.refresh_table {
@@ -427,20 +507,105 @@ impl GripApp {
                 });
             });
 
+        // Guide §8 — Services: session tree + Output / Result
         egui::TopBottomPanel::bottom("services")
-            .default_height(100.0)
+            .default_height(140.0)
             .resizable(true)
+            .frame(
+                egui::Frame::none()
+                    .fill(JetBrainsDark::PANEL)
+                    .stroke(egui::Stroke::new(1.0, JetBrainsDark::BORDER)),
+            )
             .show(ctx, |ui| {
-                ui.label(RichText::new("Services").small().strong());
-                ScrollArea::vertical().show(ui, |ui| {
-                    for (ok, line) in &self.console {
-                        let color = if *ok {
-                            Color32::from_rgb(140, 190, 140)
-                        } else {
-                            Color32::from_rgb(230, 120, 120)
-                        };
-                        ui.label(RichText::new(line).color(color).small());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Services").small().strong());
+                    ui.separator();
+                    ui.selectable_value(&mut self.services_tab, ServicesTab::Output, "Output");
+                    ui.selectable_value(&mut self.services_tab, ServicesTab::Result, "Result");
+                    if self.busy {
+                        ui.label(
+                            RichText::new("Running…")
+                                .small()
+                                .color(JetBrainsDark::ACCENT),
+                        );
                     }
+                });
+                ui.separator();
+                ui.columns(2, |cols| {
+                    cols[0].set_min_width(180.0);
+                    ScrollArea::vertical()
+                        .id_salt("svc_tree")
+                        .show(&mut cols[0], |ui| {
+                            ui.label(
+                                RichText::new(self.active_ds().tree_label())
+                                    .small()
+                                    .color(JetBrainsDark::ACCENT),
+                            );
+                            ui.indent("svc_console", |ui| {
+                                ui.label(RichText::new("console").small());
+                                if !self.last_sql.is_empty() {
+                                    ui.label(
+                                        RichText::new(truncate_sql(&self.last_sql, 48))
+                                            .small()
+                                            .monospace()
+                                            .color(JetBrainsDark::TEXT_DIM),
+                                    );
+                                }
+                            });
+                        });
+                    ScrollArea::vertical()
+                        .id_salt("svc_body")
+                        .show(&mut cols[1], |ui| {
+                            match self.services_tab {
+                                ServicesTab::Output => {
+                                    for (ok, line) in &self.console {
+                                        let color = if *ok {
+                                            Color32::from_rgb(140, 190, 140)
+                                        } else {
+                                            Color32::from_rgb(230, 120, 120)
+                                        };
+                                        ui.label(RichText::new(line).color(color).small());
+                                    }
+                                }
+                                ServicesTab::Result => {
+                                    if let WorkspaceTab::Console { result, .. } =
+                                        &self.workspace.tabs[0]
+                                    {
+                                        if result.columns.is_empty() {
+                                            ui.label(
+                                                RichText::new("No result grid yet — Execute SQL.")
+                                                    .small()
+                                                    .color(JetBrainsDark::TEXT_DIM),
+                                            );
+                                        } else {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "{} cols × {} rows",
+                                                    result.columns.len(),
+                                                    result.rows.len()
+                                                ))
+                                                .small()
+                                                .color(JetBrainsDark::TEXT_DIM),
+                                            );
+                                            for c in &result.columns {
+                                                ui.label(
+                                                    RichText::new(c)
+                                                        .small()
+                                                        .monospace()
+                                                        .color(JetBrainsDark::TEXT),
+                                                );
+                                            }
+                                        }
+                                    } else {
+                                        ui.label(
+                                            RichText::new("Switch to console tab for Result summary.")
+                                                .small()
+                                                .color(JetBrainsDark::TEXT_DIM),
+                                        );
+                                    }
+                                }
+                            }
+                        });
                 });
             });
 
@@ -578,4 +743,14 @@ impl GripApp {
 
 pub fn datagrip_visuals(ctx: &egui::Context) {
     crate::theme::apply(ctx);
+}
+
+fn truncate_sql(s: &str, max: usize) -> String {
+    let one = s.replace('\n', " ");
+    if one.chars().count() <= max {
+        one
+    } else {
+        let t: String = one.chars().take(max.saturating_sub(1)).collect();
+        format!("{t}…")
+    }
 }

@@ -13,6 +13,7 @@ pub enum KindFilter {
     Subsystem,
     Synthesis,
     DynamicValidation,
+    Guide,
 }
 
 impl KindFilter {
@@ -23,6 +24,7 @@ impl KindFilter {
         KindFilter::Subsystem,
         KindFilter::Synthesis,
         KindFilter::DynamicValidation,
+        KindFilter::Guide,
     ];
 
     fn label(self) -> &'static str {
@@ -33,6 +35,7 @@ impl KindFilter {
             Self::Subsystem => "Subsystem",
             Self::Synthesis => "Synthesis",
             Self::DynamicValidation => "Dynamic",
+            Self::Guide => "Guide",
         }
     }
 
@@ -44,6 +47,7 @@ impl KindFilter {
             Self::Subsystem => kind == ReportKind::Subsystem,
             Self::Synthesis => kind == ReportKind::Synthesis,
             Self::DynamicValidation => kind == ReportKind::DynamicValidation,
+            Self::Guide => kind == ReportKind::Guide,
         }
     }
 }
@@ -282,6 +286,7 @@ fn kind_label(k: ReportKind) -> &'static str {
         ReportKind::Subsystem => "subsystem",
         ReportKind::Synthesis => "synthesis",
         ReportKind::DynamicValidation => "dynamic",
+        ReportKind::Guide => "guide",
     }
 }
 
@@ -458,8 +463,9 @@ mod tests {
     fn default_lists_all_reports() {
         let b = ReportsBrowser::default();
         assert_eq!(b.filtered_ids.len(), reports().len());
-        assert!(reports().len() >= 15);
+        assert!(reports().len() >= 16);
         assert!(b.filtered_ids.contains(&"13-ui-validation"));
+        assert!(b.filtered_ids.contains(&"14-datagrip-reference-guide"));
         assert_eq!(b.selected_id, Some("00-overview"));
         assert!(b.selected_report().is_some());
     }

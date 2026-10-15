@@ -43,6 +43,7 @@ Canonical source: [`reports/`](reports/). Embedded at compile time by the `grip`
 | [reports/11-dynamic-validation.md](reports/11-dynamic-validation.md) | — | Phase 2a runtime validation |
 | [reports/12-dynamic-validation-2b.md](reports/12-dynamic-validation-2b.md) | — | Phase 2b remaining items |
 | [reports/13-ui-validation.md](reports/13-ui-validation.md) | — | Phase 2c UI validation runbook |
+| [reports/14-datagrip-reference-guide.md](reports/14-datagrip-reference-guide.md) | — | Product UX reference map |
 
 Evidence bundle: [rea-evidence/session-evidence.json](rea-evidence/session-evidence.json) (~17 MB).
 

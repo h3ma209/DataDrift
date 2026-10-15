@@ -5,8 +5,9 @@ mod jdbc;
 mod model;
 mod mysql_format;
 mod reports;
-mod text_ar;
+mod sql;
 mod store;
+mod text_ar;
 mod theme;
 mod workspace;
 

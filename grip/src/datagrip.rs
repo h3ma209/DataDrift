@@ -26,6 +26,8 @@ pub enum ReportKind {
     Subsystem,
     Synthesis,
     DynamicValidation,
+    /// Product walkthrough / UX map (not REA bytecode).
+    Guide,
 }
 
 /// One markdown report: metadata + embedded body.
@@ -193,6 +195,14 @@ const REPORTS: &[Report] = &[
         kind: ReportKind::DynamicValidation,
         markdown: include_str!("../../reports/13-ui-validation.md"),
     },
+    Report {
+        id: "14-datagrip-reference-guide",
+        file: "14-datagrip-reference-guide.md",
+        title: "DataGrip: Complete Reference Guide",
+        subsystem: None,
+        kind: ReportKind::Guide,
+        markdown: include_str!("../../reports/14-datagrip-reference-guide.md"),
+    },
 ];
 
 #[cfg(test)]
@@ -200,12 +210,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_has_fifteen_reports() {
-        assert_eq!(reports().len(), 15);
+    fn catalog_has_sixteen_reports() {
+        assert_eq!(reports().len(), 16);
         assert!(report_by_id("13-ui-validation").is_some());
         assert_eq!(
             report_by_id("13-ui-validation").unwrap().kind,
             ReportKind::DynamicValidation
+        );
+        assert_eq!(
+            report_by_id("14-datagrip-reference-guide").unwrap().kind,
+            ReportKind::Guide
         );
     }
 

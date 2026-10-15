@@ -140,28 +140,44 @@ impl Workspace {
 
 pub struct WorkspaceAction {
     pub refresh_table: bool,
-    pub run_console: bool,
+    /// SQL to execute (statement under caret / selection), if any.
+    pub execute_sql: Option<String>,
     pub close_tab: bool,
+    pub schema_pick: Option<String>,
 }
 
 impl Default for WorkspaceAction {
     fn default() -> Self {
         Self {
             refresh_table: false,
-            run_console: false,
+            execute_sql: None,
             close_tab: false,
+            schema_pick: None,
         }
     }
 }
 
-pub fn ui(workspace: &mut Workspace, ui: &mut Ui, busy: bool) -> WorkspaceAction {
+/// Editor header context (guide §6.4).
+pub struct ConsoleChrome<'a> {
+    pub ds_label: &'a str,
+    pub schemas: &'a [String],
+    pub current_schema: &'a mut String,
+    pub tx_auto: bool,
+}
+
+pub fn ui(
+    workspace: &mut Workspace,
+    ui: &mut Ui,
+    busy: bool,
+    chrome: Option<ConsoleChrome<'_>>,
+) -> WorkspaceAction {
     let mut action = WorkspaceAction::default();
     ui.vertical(|ui| {
         tab_bar(ui, workspace, &mut action);
         ui.separator();
         match &mut workspace.tabs[workspace.active] {
             WorkspaceTab::Console { sql, result } => {
-                console_view(ui, sql, result, busy, &mut action);
+                console_view(ui, sql, result, busy, chrome, &mut action);
             }
             WorkspaceTab::TableData {
                 schema,
@@ -236,24 +252,75 @@ fn console_view(
     sql: &mut String,
     result: &GridData,
     busy: bool,
+    mut chrome: Option<ConsoleChrome<'_>>,
     action: &mut WorkspaceAction,
 ) {
+    // Guide §6.4 — data source / schema / Tx widgets
     ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
         if ui
             .add_enabled(!busy, egui::Button::new("▶ Execute"))
+            .on_hover_text("Execute statement under caret (⌘⏎ / Ctrl+Enter)")
             .clicked()
         {
-            action.run_console = true;
+            action.execute_sql = Some(crate::sql::execute_target(sql, sql.len(), None));
+        }
+        if let Some(ref mut ch) = chrome {
+            ui.separator();
+            ui.label(RichText::new("Data source").small().color(JetBrainsDark::TEXT_DIM));
+            ui.label(RichText::new(ch.ds_label).strong().color(JetBrainsDark::ACCENT));
+            ui.label(RichText::new("Schema").small().color(JetBrainsDark::TEXT_DIM));
+            let schema_label = if ch.current_schema.is_empty() {
+                "(default)".to_string()
+            } else {
+                ch.current_schema.clone()
+            };
+            egui::ComboBox::from_id_salt("console_schema")
+                .selected_text(schema_label)
+                .width(140.0)
+                .show_ui(ui, |ui| {
+                    for s in ch.schemas {
+                        if ui
+                            .selectable_label(ch.current_schema == s, s.as_str())
+                            .clicked()
+                        {
+                            action.schema_pick = Some(s.clone());
+                        }
+                    }
+                });
+            ui.separator();
+            ui.label(
+                RichText::new(if ch.tx_auto { "Tx: Auto" } else { "Tx: Manual" })
+                    .small()
+                    .color(JetBrainsDark::TEXT_DIM),
+            );
         }
     });
-    ui.add(
-        egui::TextEdit::multiline(sql)
-            .font(egui::TextStyle::Monospace)
-            .desired_width(f32::INFINITY)
-            .desired_rows(8)
-            .text_color(JetBrainsDark::TEXT),
-    );
+
+    let edit = egui::TextEdit::multiline(sql)
+        .font(egui::TextStyle::Monospace)
+        .desired_width(f32::INFINITY)
+        .desired_rows(10)
+        .text_color(JetBrainsDark::TEXT)
+        .lock_focus(false);
+    let resp = ui.add(edit);
+
+    // Ctrl/Cmd+Enter → statement at end of selection or caret approx (end of buffer if unknown)
+    let mod_enter = ui.input(|i| {
+        (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(egui::Key::Enter)
+    });
+    if mod_enter && !busy && resp.has_focus() {
+        let caret = sql.len();
+        action.execute_sql = Some(crate::sql::execute_target(sql, caret, None));
+    }
+
     ui.separator();
+    ui.label(
+        RichText::new("Result")
+            .small()
+            .strong()
+            .color(JetBrainsDark::TEXT_DIM),
+    );
     data_grid(ui, result, &mut None, true);
 }
 

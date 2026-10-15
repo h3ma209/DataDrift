@@ -100,6 +100,10 @@ impl Default for ExplorerActions {
 pub struct ExplorerHit {
     pub select_source: Option<usize>,
     pub open_table: Option<(String, String)>,
+    /// Right-click: open console with SELECT for table.
+    pub console_select: Option<(String, String)>,
+    pub copy_ddl: Option<(String, String)>,
+    pub set_schema: Option<String>,
 }
 
 impl Default for ExplorerHit {
@@ -107,6 +111,9 @@ impl Default for ExplorerHit {
         Self {
             select_source: None,
             open_table: None,
+            console_select: None,
+            copy_ddl: None,
+            set_schema: None,
         }
     }
 }
@@ -332,6 +339,29 @@ fn render_tables_folder(
                     state.selected_table = Some((ds_id, schema.name.clone(), table.clone()));
                     hit.open_table = Some((schema.name.clone(), table.clone()));
                 }
+                resp.context_menu(|ui| {
+                    if ui.button("Open Data Editor").clicked() {
+                        hit.open_table = Some((schema.name.clone(), table.clone()));
+                        ui.close_menu();
+                    }
+                    if ui.button("Jump to Query Console").clicked() {
+                        hit.console_select = Some((schema.name.clone(), table.clone()));
+                        ui.close_menu();
+                    }
+                    if ui.button("SQL Scripts → SELECT … LIMIT 200").clicked() {
+                        hit.console_select = Some((schema.name.clone(), table.clone()));
+                        ui.close_menu();
+                    }
+                    if ui.button("Copy DDL (CREATE stub)").clicked() {
+                        hit.copy_ddl = Some((schema.name.clone(), table.clone()));
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if ui.button("Set as current schema").clicked() {
+                        hit.set_schema = Some(schema.name.clone());
+                        ui.close_menu();
+                    }
+                });
             });
         }
     });
