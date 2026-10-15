@@ -240,9 +240,8 @@ impl GripApp {
     }
 
     fn update_status_cursor(&mut self) {
-        if let WorkspaceTab::TableData { selected, .. } = &self.workspace.tabs[self.workspace.active]
-        {
-            if let Some((r, c)) = selected {
+        if let WorkspaceTab::TableData { grid, .. } = &self.workspace.tabs[self.workspace.active] {
+            if let Some((r, c)) = grid.selected {
                 self.status_cursor = format!("{}:{}", r + 1, c + 1);
                 return;
             }
@@ -257,6 +256,7 @@ impl GripApp {
             ds.tree_label(),
             schema.clone(),
             table.clone(),
+            ds.vendor,
         );
         let sql = workspace::build_table_sql(ds.vendor, &schema, &table, 200);
         self.explorer.selected_table = Some((ds.id, schema, table));
@@ -445,6 +445,22 @@ impl GripApp {
             self.current_schema = schema.clone();
             self.log(true, format!("Current schema → {schema}"));
         }
+        if let Some(sql) = explorer_hit.paste_sql {
+            self.workspace.active = 0;
+            if let WorkspaceTab::Console { sql: buf, .. } = &mut self.workspace.tabs[0] {
+                if buf.trim().is_empty() {
+                    *buf = sql;
+                } else {
+                    buf.push('\n');
+                    buf.push_str(&sql);
+                }
+            }
+            self.log(true, "SQL template → console");
+        }
+        if let Some(name) = explorer_hit.copy_name {
+            ctx.copy_text(name.clone());
+            self.log(true, format!("Copied {name}"));
+        }
 
         // Sync default schema from DS when empty after connect
         if self.current_schema.is_empty() {
@@ -504,6 +520,57 @@ impl GripApp {
             let csv = workspace::grid_to_csv(&grid);
             ctx.copy_text(csv);
             self.log(true, "Copied CSV to clipboard");
+        }
+        if let Some(t) = ws_action.copy_text {
+            ctx.copy_text(t);
+            self.log(true, "Copied to clipboard");
+        }
+        if let Some(sql) = ws_action.drop_sql {
+            self.workspace.active = 0;
+            if let WorkspaceTab::Console { sql: buf, .. } = &mut self.workspace.tabs[0] {
+                *buf = format!("{sql};\n");
+            }
+            self.log(true, "Dropped table → console SELECT");
+        }
+        if let Some(sql) = ws_action.submit_sql {
+            let tab_id = self.workspace.tabs[self.workspace.active].tab_id();
+            let ds = if let WorkspaceTab::TableData { ds_id, .. } =
+                &self.workspace.tabs[self.workspace.active]
+            {
+                self.ds_by_id(*ds_id).cloned()
+            } else {
+                None
+            };
+            if let Some(ds) = ds {
+                self.log(true, format!("Submitting DML…\n{sql}"));
+                // Run statements one-by-one; worker handles single SQL — join with newlines OK for MySQL multi?
+                // Split and run first batch as one string; native drivers may only do one stmt.
+                for stmt in sql.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+                    self.run_query(ds.clone(), stmt.to_string(), tab_id);
+                }
+                // Reload after submit
+                if let WorkspaceTab::TableData {
+                    id,
+                    schema,
+                    table,
+                    where_clause,
+                    order_clause,
+                    vendor,
+                    ..
+                } = &self.workspace.tabs[self.workspace.active]
+                {
+                    let reload = workspace::build_table_sql_filtered(
+                        *vendor,
+                        schema,
+                        table,
+                        where_clause,
+                        order_clause,
+                        200,
+                    );
+                    let id = *id;
+                    self.run_query(ds, reload, id);
+                }
+            }
         }
         if ws_action.refresh_table {
             if let WorkspaceTab::TableData {

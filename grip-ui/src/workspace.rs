@@ -1,7 +1,7 @@
+use crate::grid::{self, GridChrome, GridViewState};
 use crate::model::DbVendor;
-use crate::text_ar;
 use crate::theme::JetBrainsDark;
-use egui::{Color32, RichText, ScrollArea, Ui, Vec2};
+use egui::{RichText, Ui, Vec2};
 
 #[derive(Clone)]
 pub struct GridData {
@@ -14,6 +14,7 @@ pub enum WorkspaceTab {
     Console {
         sql: String,
         result: GridData,
+        grid: GridViewState,
     },
     TableData {
         id: u64,
@@ -24,7 +25,8 @@ pub enum WorkspaceTab {
         where_clause: String,
         order_clause: String,
         result: GridData,
-        selected: Option<(usize, usize)>,
+        grid: GridViewState,
+        vendor: DbVendor,
     },
 }
 
@@ -59,6 +61,7 @@ impl Default for Workspace {
                     columns: vec![],
                     rows: vec![],
                 },
+                grid: GridViewState::default(),
             }],
             active: 0,
             next_table_tab_id: 1,
@@ -77,6 +80,7 @@ impl Workspace {
         ds_label: String,
         schema: String,
         table: String,
+        vendor: DbVendor,
     ) -> u64 {
         if let Some((i, _)) = self.tabs.iter().enumerate().find_map(|(i, t)| match t {
             WorkspaceTab::TableData {
@@ -105,7 +109,8 @@ impl Workspace {
                 columns: vec![],
                 rows: vec![],
             },
-            selected: None,
+            grid: GridViewState::default(),
+            vendor,
         });
         self.active = self.tabs.len() - 1;
         id
@@ -113,14 +118,19 @@ impl Workspace {
 
     pub fn apply_query_result(&mut self, tab_id: u64, columns: Vec<String>, rows: Vec<Vec<String>>) {
         for tab in &mut self.tabs {
-            let match_id = tab.tab_id();
-            if match_id != tab_id {
+            if tab.tab_id() != tab_id {
                 continue;
             }
             match tab {
-                WorkspaceTab::Console { result, .. } | WorkspaceTab::TableData { result, .. } => {
+                WorkspaceTab::Console { result, grid, .. } => {
                     result.columns = columns;
                     result.rows = rows;
+                    grid.on_loaded(result);
+                }
+                WorkspaceTab::TableData { result, grid, .. } => {
+                    result.columns = columns;
+                    result.rows = rows;
+                    grid.on_loaded(result);
                 }
             }
             return;
@@ -140,14 +150,16 @@ impl Workspace {
 
 pub struct WorkspaceAction {
     pub refresh_table: bool,
-    /// SQL to execute (statement under caret / selection), if any.
     pub execute_sql: Option<String>,
     pub close_tab: bool,
     pub schema_pick: Option<String>,
-    /// Guide §7 — export result grid as CSV to clipboard.
     pub export_csv: bool,
-    /// Guide §7.1 — EXPLAIN plan for current statement.
     pub explain_sql: Option<String>,
+    /// DML batch from table editor Submit.
+    pub submit_sql: Option<String>,
+    pub copy_text: Option<String>,
+    /// Dropped SQL from explorer DnD onto console.
+    pub drop_sql: Option<String>,
 }
 
 impl Default for WorkspaceAction {
@@ -159,11 +171,13 @@ impl Default for WorkspaceAction {
             schema_pick: None,
             export_csv: false,
             explain_sql: None,
+            submit_sql: None,
+            copy_text: None,
+            drop_sql: None,
         }
     }
 }
 
-/// Editor header context (guide §6.4).
 pub struct ConsoleChrome<'a> {
     pub ds_label: &'a str,
     pub schemas: &'a [String],
@@ -183,8 +197,8 @@ pub fn ui(
         tab_bar(ui, workspace, &mut action);
         ui.separator();
         match &mut workspace.tabs[workspace.active] {
-            WorkspaceTab::Console { sql, result } => {
-                console_view(ui, sql, result, busy, chrome, &mut action);
+            WorkspaceTab::Console { sql, result, grid } => {
+                console_view(ui, sql, result, grid, busy, chrome, &mut action);
             }
             WorkspaceTab::TableData {
                 schema,
@@ -192,19 +206,22 @@ pub fn ui(
                 where_clause,
                 order_clause,
                 result,
-                selected,
+                grid,
+                vendor,
                 ..
             } => {
                 let schema = schema.clone();
                 let table = table.clone();
+                let vendor = *vendor;
                 table_view(
                     ui,
                     &schema,
                     &table,
+                    vendor,
                     where_clause,
                     order_clause,
                     result,
-                    selected,
+                    grid,
                     busy,
                     &mut action,
                 );
@@ -257,12 +274,12 @@ fn tab_bar(ui: &mut Ui, workspace: &mut Workspace, action: &mut WorkspaceAction)
 fn console_view(
     ui: &mut Ui,
     sql: &mut String,
-    result: &GridData,
+    result: &mut GridData,
+    grid: &mut GridViewState,
     busy: bool,
     mut chrome: Option<ConsoleChrome<'_>>,
     action: &mut WorkspaceAction,
 ) {
-    // Guide §6.4 — data source / schema / Tx widgets
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         if ui
@@ -280,14 +297,6 @@ fn console_view(
         {
             let stmt = crate::sql::execute_target(sql, sql.len(), None);
             action.explain_sql = Some(stmt);
-        }
-        if !result.columns.is_empty()
-            && ui
-                .button("Export CSV")
-                .on_hover_text("Copy result grid as CSV (guide §7 / §10)")
-                .clicked()
-        {
-            action.export_csv = true;
         }
         if let Some(ref mut ch) = chrome {
             ui.separator();
@@ -321,48 +330,73 @@ fn console_view(
         }
     });
 
-    let edit = egui::TextEdit::multiline(sql)
-        .font(egui::TextStyle::Monospace)
-        .desired_width(f32::INFINITY)
-        .desired_rows(10)
-        .text_color(JetBrainsDark::TEXT)
-        .lock_focus(false);
-    let resp = ui.add(edit);
+    // DnD drop zone for explorer table → SELECT
+    let (_drop_resp, dropped) = ui.dnd_drop_zone::<String, _>(
+        egui::Frame::none()
+            .stroke(egui::Stroke::new(1.0, JetBrainsDark::BORDER))
+            .inner_margin(egui::Margin::same(4.0)),
+        |ui| {
+            let edit = egui::TextEdit::multiline(sql)
+                .font(egui::TextStyle::Monospace)
+                .desired_width(f32::INFINITY)
+                .desired_rows(10)
+                .text_color(JetBrainsDark::TEXT)
+                .lock_focus(false);
+            ui.add(edit)
+        },
+    );
+    if let Some(payload) = dropped {
+        action.drop_sql = Some((*payload).clone());
+    }
 
-    // Ctrl/Cmd+Enter → statement at end of selection or caret approx (end of buffer if unknown)
     let mod_enter = ui.input(|i| {
         (i.modifiers.command || i.modifiers.ctrl) && i.key_pressed(egui::Key::Enter)
     });
-    if mod_enter && !busy && resp.has_focus() {
+    if mod_enter && !busy {
         let caret = sql.len();
         action.execute_sql = Some(crate::sql::execute_target(sql, caret, None));
     }
 
-    ui.separator();
+    ui.add_space(6.0);
     ui.label(
         RichText::new("Result")
             .small()
             .strong()
             .color(JetBrainsDark::TEXT_DIM),
     );
-    data_grid(ui, result, &mut None, true);
+    let ga = grid::show(ui, result, grid, None, busy);
+    if ga.export_csv {
+        action.export_csv = true;
+    }
+    if let Some(t) = ga.copy_cell {
+        action.copy_text = Some(t);
+    }
+    if let Some(w) = ga.filter_where {
+        // Append filter as comment / WHERE hint into console
+        if w.is_empty() {
+            // ignore
+        } else {
+            sql.push_str(&format!("\n-- filter: {w}\n"));
+        }
+    }
 }
 
 fn table_view(
     ui: &mut Ui,
     schema: &str,
     table: &str,
+    vendor: DbVendor,
     where_clause: &mut String,
     order_clause: &mut String,
-    result: &GridData,
-    selected: &mut Option<(usize, usize)>,
+    result: &mut GridData,
+    grid: &mut GridViewState,
     busy: bool,
     action: &mut WorkspaceAction,
 ) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
         if ui
-            .add_enabled(!busy, egui::Button::new("↻").min_size(Vec2::new(26.0, 22.0)))
+            .add_enabled(!busy, egui::Button::new("↻").min_size(Vec2::new(28.0, 24.0)))
             .on_hover_text("Reload data")
             .clicked()
         {
@@ -373,13 +407,13 @@ fn table_view(
         ui.label(RichText::new("WHERE").small().color(JetBrainsDark::TEXT_DIM));
         let where_resp = ui.add(
             egui::TextEdit::singleline(where_clause)
-                .desired_width(180.0)
-                .hint_text("condition"),
+                .desired_width(200.0)
+                .hint_text("condition — or right-click cell → Filter"),
         );
         ui.label(RichText::new("ORDER BY").small().color(JetBrainsDark::TEXT_DIM));
         let order_resp = ui.add(
             egui::TextEdit::singleline(order_clause)
-                .desired_width(120.0)
+                .desired_width(140.0)
                 .hint_text("column"),
         );
         if (where_resp.lost_focus() || order_resp.lost_focus())
@@ -396,27 +430,53 @@ fn table_view(
             );
         });
     });
-    ui.separator();
-    data_grid(ui, result, selected, false);
     ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(format!("{} rows", result.rows.len()))
-                .small()
-                .color(JetBrainsDark::TEXT_DIM),
-        );
-        if !result.columns.is_empty()
-            && ui
-                .small_button("Export CSV")
-                .on_hover_text("Copy as CSV")
-                .clicked()
-        {
-            action.export_csv = true;
+    ui.separator();
+    ui.add_space(2.0);
+
+    let editable = matches!(
+        vendor,
+        DbVendor::MySQL
+            | DbVendor::MariaDB
+            | DbVendor::PostgreSQL
+            | DbVendor::Sqlite
+            | DbVendor::Redshift
+            | DbVendor::ClickHouse
+    );
+    let chrome = GridChrome {
+        editable,
+        vendor,
+        schema,
+        table,
+    };
+    let ga = grid::show(ui, result, grid, Some(chrome), busy);
+
+    if ga.export_csv {
+        action.export_csv = true;
+    }
+    if let Some(t) = ga.copy_cell {
+        action.copy_text = Some(t);
+    }
+    if let Some(w) = ga.filter_where {
+        *where_clause = w;
+        action.refresh_table = true;
+    }
+    if ga.revert {
+        if let Some(base) = &grid.baseline {
+            *result = base.clone();
+            grid.marked_delete.clear();
+            grid.new_rows.clear();
+            grid.editing = None;
         }
-    });
+    }
+    if ga.submit {
+        match grid::build_submit_sql(vendor, schema, table, result, grid) {
+            Ok(sql) => action.submit_sql = Some(sql),
+            Err(e) => action.copy_text = Some(format!("/* submit: {e} */")),
+        }
+    }
 }
 
-/// TSV/CSV for clipboard export (DataGrip Export → Clipboard).
 pub fn grid_to_csv(data: &GridData) -> String {
     let mut out = String::new();
     let escape = |s: &str| {
@@ -458,178 +518,10 @@ pub fn wrap_explain(vendor: DbVendor, sql: &str) -> String {
     }
 }
 
-const CELL_PAD_X: f32 = 10.0;
-const CELL_PAD_Y: f32 = 4.0;
-const ROW_NUM_W: f32 = 44.0;
-const MIN_COL_W: f32 = 72.0;
-const MAX_COL_W: f32 = 280.0;
-const CHAR_W: f32 = 7.5;
-
-fn data_grid(
-    ui: &mut Ui,
-    data: &GridData,
-    selected: &mut Option<(usize, usize)>,
-    console_mode: bool,
-) {
-    if data.columns.is_empty() {
-        ui.label(
-            RichText::new("No results")
-                .small()
-                .color(JetBrainsDark::TEXT_DIM),
-        );
-        return;
-    }
-
-    let col_widths = column_widths(data);
-
-    ScrollArea::both().auto_shrink([false; 2]).show(ui, |ui| {
-        egui::Grid::new("data_grid")
-            .striped(true)
-            .spacing([1.0, 1.0])
-            .min_col_width(MIN_COL_W)
-            .max_col_width(MAX_COL_W)
-            .show(ui, |ui| {
-                // Header row
-                grid_cell(
-                    ui,
-                    ROW_NUM_W,
-                    JetBrainsDark::HEADER,
-                    RichText::new("#")
-                        .size(11.0)
-                        .strong()
-                        .color(JetBrainsDark::TEXT_DIM),
-                    false,
-                );
-                for (ci, c) in data.columns.iter().enumerate() {
-                    let head = if !console_mode && c.eq_ignore_ascii_case("id") {
-                        format!("🔑 {c}")
-                    } else {
-                        c.clone()
-                    };
-                    grid_cell(
-                        ui,
-                        col_widths[ci],
-                        JetBrainsDark::HEADER,
-                        RichText::new(text_ar::for_display(&head))
-                            .size(12.0)
-                            .strong()
-                            .color(JetBrainsDark::TEXT),
-                        false,
-                    );
-                }
-                ui.end_row();
-
-                for (ri, row) in data.rows.iter().enumerate() {
-                    let row_bg = if ri % 2 == 0 {
-                        JetBrainsDark::EDITOR
-                    } else {
-                        JetBrainsDark::ROW_ALT
-                    };
-                    grid_cell(
-                        ui,
-                        ROW_NUM_W,
-                        row_bg,
-                        RichText::new((ri + 1).to_string())
-                            .size(11.0)
-                            .color(JetBrainsDark::TEXT_DIM),
-                        false,
-                    );
-                    for (ci, cell) in row.iter().enumerate() {
-                        let is_sel = selected
-                            .map(|(r, c)| r == ri && c == ci)
-                            .unwrap_or(false);
-                        let bg = if is_sel {
-                            JetBrainsDark::ACCENT
-                        } else {
-                            row_bg
-                        };
-                        let color = if is_sel {
-                            Color32::WHITE
-                        } else {
-                            JetBrainsDark::TEXT
-                        };
-                        let display = text_ar::for_display(&truncate_display(cell, 48));
-                        let w = col_widths.get(ci).copied().unwrap_or(MIN_COL_W);
-                        let resp = grid_cell(
-                            ui,
-                            w,
-                            bg,
-                            RichText::new(display).size(12.5).color(color),
-                            true,
-                        );
-                        if !cell.is_empty() && cell != "NULL" {
-                            resp.clone().on_hover_text(text_ar::for_display(cell));
-                        }
-                        if resp.clicked() {
-                            *selected = Some((ri, ci));
-                        }
-                    }
-                    ui.end_row();
-                }
-            });
-    });
-}
-
-fn grid_cell(
-    ui: &mut Ui,
-    width: f32,
-    fill: Color32,
-    text: RichText,
-    clickable: bool,
-) -> egui::Response {
-    let sense = if clickable {
-        egui::Sense::click()
-    } else {
-        egui::Sense::hover()
-    };
-    egui::Frame::none()
-        .fill(fill)
-        .stroke(egui::Stroke::new(1.0, JetBrainsDark::BORDER))
-        .inner_margin(egui::Margin::symmetric(CELL_PAD_X, CELL_PAD_Y))
-        .show(ui, |ui| {
-            ui.set_min_width(width - CELL_PAD_X * 2.0);
-            ui.set_max_width(width - CELL_PAD_X * 2.0);
-            ui.add(egui::Label::new(text).truncate());
-        })
-        .response
-        .interact(sense)
-}
-
-fn column_widths(data: &GridData) -> Vec<f32> {
-    let mut widths: Vec<f32> = data
-        .columns
-        .iter()
-        .map(|c| ((c.chars().count() as f32) * CHAR_W + CELL_PAD_X * 2.0).max(MIN_COL_W))
-        .collect();
-    for row in data.rows.iter().take(80) {
-        for (i, cell) in row.iter().enumerate() {
-            if i >= widths.len() {
-                break;
-            }
-            let visible = truncate_display(cell, 48);
-            let w = (visible.chars().count() as f32) * CHAR_W + CELL_PAD_X * 2.0;
-            widths[i] = widths[i].max(w.min(MAX_COL_W)).max(MIN_COL_W);
-        }
-    }
-    widths
-}
-
-fn truncate_display(s: &str, max_chars: usize) -> String {
-    let count = s.chars().count();
-    if count <= max_chars {
-        return s.to_string();
-    }
-    let mut out: String = s.chars().take(max_chars.saturating_sub(1)).collect();
-    out.push('…');
-    out
-}
-
-
 pub fn build_table_sql(vendor: DbVendor, schema: &str, table: &str, limit: u32) -> String {
     build_table_sql_filtered(vendor, schema, table, "", "", limit)
 }
 
-/// DataGrip-style data editor query: `SELECT * FROM … [WHERE …] [ORDER BY …] LIMIT n`.
 pub fn build_table_sql_filtered(
     vendor: DbVendor,
     schema: &str,
@@ -649,7 +541,6 @@ pub fn build_table_sql_filtered(
             return format!("GET {table}");
         }
         DbVendor::MongoDB => {
-            // Console uses find syntax, not SQL SELECT
             return format!("db.{table}.find({{}});");
         }
     };
@@ -666,4 +557,31 @@ pub fn build_table_sql_filtered(
     }
     sql.push_str(&format!(" LIMIT {limit}"));
     sql
+}
+
+/// SQL script templates (guide §5.3 table context menu).
+pub fn sql_templates(vendor: DbVendor, schema: &str, table: &str) -> Vec<(&'static str, String)> {
+    let q = |s: &str, t: &str| match vendor {
+        DbVendor::MySQL | DbVendor::MariaDB | DbVendor::ClickHouse => format!("`{s}`.`{t}`"),
+        DbVendor::PostgreSQL | DbVendor::Redshift => format!("\"{s}\".\"{t}\""),
+        DbVendor::Sqlite => format!("\"{t}\""),
+        _ => format!("{s}.{t}"),
+    };
+    let ft = q(schema, table);
+    vec![
+        ("SELECT * LIMIT 200", format!("SELECT * FROM {ft} LIMIT 200;")),
+        ("SELECT COUNT(*)", format!("SELECT COUNT(*) FROM {ft};")),
+        (
+            "INSERT template",
+            format!("INSERT INTO {ft} (-- cols\n) VALUES (-- vals\n);"),
+        ),
+        (
+            "UPDATE template",
+            format!("UPDATE {ft} SET col = val WHERE pk = ?;"),
+        ),
+        (
+            "DELETE template",
+            format!("DELETE FROM {ft} WHERE pk = ?;"),
+        ),
+    ]
 }

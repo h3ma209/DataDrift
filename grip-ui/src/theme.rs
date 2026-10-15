@@ -54,6 +54,13 @@ pub fn apply(ctx: &Context) {
     v.widgets.inactive.rounding = r;
     v.widgets.active.rounding = r;
     ctx.set_visuals(v);
+
+    let mut style = (*ctx.style()).clone();
+    style.spacing.item_spacing = egui::vec2(6.0, 4.0);
+    style.spacing.button_padding = egui::vec2(8.0, 4.0);
+    style.spacing.window_margin = egui::Margin::same(8.0);
+    style.spacing.interact_size.y = 22.0;
+    ctx.set_style(style);
 }
 
 fn install_fonts(ctx: &Context) {

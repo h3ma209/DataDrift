@@ -112,6 +112,9 @@ pub struct ExplorerHit {
     pub console_select: Option<(String, String)>,
     pub copy_ddl: Option<(String, String)>,
     pub set_schema: Option<String>,
+    /// Full SQL to paste into console (templates / DnD).
+    pub paste_sql: Option<String>,
+    pub copy_name: Option<String>,
 }
 
 impl Default for ExplorerHit {
@@ -122,6 +125,8 @@ impl Default for ExplorerHit {
             console_select: None,
             copy_ddl: None,
             set_schema: None,
+            paste_sql: None,
+            copy_name: None,
         }
     }
 }
@@ -168,6 +173,7 @@ pub fn tree(
     active_source: usize,
 ) -> ExplorerHit {
     let mut hit = ExplorerHit::default();
+    // Schema-level + DS context
     for (i, ds) in sources.iter().enumerate() {
         let ds_id = ds.id;
         let selected = i == active_source;
@@ -212,6 +218,27 @@ pub fn tree(
                     ds_open = true;
                 }
             }
+            resp.context_menu(|ui| {
+                if ui.button("Properties…").clicked() {
+                    hit.select_source = Some(i);
+                    ui.close_menu();
+                }
+                if ui.button("New Query Console").clicked() {
+                    hit.select_source = Some(i);
+                    hit.paste_sql = Some("-- console\nSELECT 1;\n".into());
+                    ui.close_menu();
+                }
+                if ui.button("Copy connection URL").clicked() {
+                    hit.copy_name = Some(ds.jdbc_url.clone());
+                    ui.close_menu();
+                }
+                ui.separator();
+                if ui.button("Disconnect").clicked() {
+                    // app handles via toolbar primarily; select so user can disconnect
+                    hit.select_source = Some(i);
+                    ui.close_menu();
+                }
+            });
         });
 
         if !ds_open {
@@ -235,12 +262,13 @@ pub fn tree(
             .into_iter()
             .partition(|s| s.name == default_db);
 
+        let vendor = ds.vendor;
         ui.indent(format!("ds-{ds_id}"), |ui| {
             for schema in primary {
-                render_tables_folder(ui, state, ds_id, &schema, &mut hit);
+                render_tables_folder(ui, state, ds_id, vendor, &schema, &mut hit);
             }
             for schema in other {
-                render_schema_node(ui, state, ds_id, &schema, &mut hit);
+                render_schema_node(ui, state, ds_id, vendor, &schema, &mut hit);
             }
             ui.horizontal(|ui| {
                 ui.add_space(16.0);
@@ -259,6 +287,7 @@ fn render_schema_node(
     ui: &mut Ui,
     state: &mut ExplorerState,
     ds_id: u64,
+    vendor: DbVendor,
     schema: &SchemaNode,
     hit: &mut ExplorerHit,
 ) {
@@ -273,11 +302,28 @@ fn render_schema_node(
             }
         });
         ui.label(RichText::new("⬡").color(JetBrainsDark::TEXT));
-        ui.label(RichText::new(&schema.name).size(13.0));
+        let resp = ui
+            .label(RichText::new(&schema.name).size(13.0))
+            .interact(egui::Sense::click());
+        resp.context_menu(|ui| {
+            if ui.button("Set as current schema").clicked() {
+                hit.set_schema = Some(schema.name.clone());
+                ui.close_menu();
+            }
+            if ui.button("Jump to Query Console").clicked() {
+                hit.set_schema = Some(schema.name.clone());
+                hit.paste_sql = Some(format!("-- schema {}\n", schema.name));
+                ui.close_menu();
+            }
+            if ui.button("Copy name").clicked() {
+                hit.copy_name = Some(schema.name.clone());
+                ui.close_menu();
+            }
+        });
     });
     if sch_open {
         ui.indent(format!("sch-{ds_id}-{}", schema.name), |ui| {
-            render_tables_folder(ui, state, ds_id, schema, hit);
+            render_tables_folder(ui, state, ds_id, vendor, schema, hit);
         });
     }
 }
@@ -286,6 +332,7 @@ fn render_tables_folder(
     ui: &mut Ui,
     state: &mut ExplorerState,
     ds_id: u64,
+    vendor: DbVendor,
     schema: &SchemaNode,
     hit: &mut ExplorerHit,
 ) {
@@ -318,12 +365,27 @@ fn render_tables_folder(
             let is_sel = state.selected_table.as_ref()
                 == Some(&(ds_id, schema.name.clone(), table.clone()));
             ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                ui.label(
-                    RichText::new("▦")
-                        .size(12.0)
-                        .color(Color32::from_rgb(130, 170, 130)),
-                );
+                ui.add_space(4.0);
+                // Drag handle only — hold + move to drop SELECT on console.
+                // Name stays clickable (dnd_drag_source uses Sense::drag and eats clicks).
+                let select_sql =
+                    crate::workspace::build_table_sql(vendor, &schema.name, table, 200);
+                let drag_id = egui::Id::new(("tbl_drag", ds_id, &schema.name, table.as_str()));
+                let drag = ui.dnd_drag_source(drag_id, select_sql, |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new("⠿")
+                                .size(11.0)
+                                .color(JetBrainsDark::TEXT_DIM),
+                        )
+                        .sense(egui::Sense::drag()),
+                    )
+                    .on_hover_text("Hold and drag to console");
+                });
+                if drag.response.dragged() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                }
+
                 let fill = if is_sel {
                     Color32::from_rgb(55, 58, 63)
                 } else {
@@ -336,15 +398,25 @@ fn render_tables_folder(
                 };
                 let resp = egui::Frame::none()
                     .fill(fill)
-                    .inner_margin(egui::Margin::symmetric(4.0, 1.0))
+                    .inner_margin(egui::Margin::symmetric(6.0, 2.0))
                     .rounding(2.0)
                     .show(ui, |ui| {
-                        ui.label(RichText::new(table).size(12.0).color(text_color));
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new("▦")
+                                    .size(12.0)
+                                    .color(Color32::from_rgb(130, 170, 130)),
+                            );
+                            ui.label(RichText::new(table).size(12.0).color(text_color));
+                        });
                     })
                     .response
                     .interact(egui::Sense::click());
                 if resp.clicked() {
                     state.selected_table = Some((ds_id, schema.name.clone(), table.clone()));
+                    hit.open_table = Some((schema.name.clone(), table.clone()));
+                }
+                if resp.double_clicked() {
                     hit.open_table = Some((schema.name.clone(), table.clone()));
                 }
                 resp.context_menu(|ui| {
@@ -356,8 +428,18 @@ fn render_tables_folder(
                         hit.console_select = Some((schema.name.clone(), table.clone()));
                         ui.close_menu();
                     }
-                    if ui.button("SQL Scripts → SELECT … LIMIT 200").clicked() {
-                        hit.console_select = Some((schema.name.clone(), table.clone()));
+                    ui.separator();
+                    ui.label(RichText::new("SQL Scripts").small().color(JetBrainsDark::TEXT_DIM));
+                    for (label, sql) in crate::workspace::sql_templates(vendor, &schema.name, table)
+                    {
+                        if ui.button(label).clicked() {
+                            hit.paste_sql = Some(format!("{sql}\n"));
+                            ui.close_menu();
+                        }
+                    }
+                    ui.separator();
+                    if ui.button("Copy qualified name").clicked() {
+                        hit.copy_name = Some(format!("{}.{}", schema.name, table));
                         ui.close_menu();
                     }
                     if ui.button("Copy DDL (CREATE stub)").clicked() {

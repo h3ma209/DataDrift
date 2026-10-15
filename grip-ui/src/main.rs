@@ -3,6 +3,7 @@ mod async_rt;
 mod connection;
 mod drivers;
 mod explorer;
+mod grid;
 mod history;
 mod jdbc;
 mod model;

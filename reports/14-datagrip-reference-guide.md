@@ -189,7 +189,11 @@ Content tabs:
 | Console + Ctrl+Enter | Console tab + statement execute |
 | Editor DS/schema/Tx widgets | Editor header bar |
 | Services Output / Result | Bottom Services split |
-| Table data editor | Table tabs + WHERE/ORDER |
-| Full menus / dump / diagrams / edit-back | Not yet |
+| Table data editor | Table tabs + WHERE/ORDER + in-place edit |
+| Grid edit / insert / delete / Submit | `grid.rs` — F2/double-click, +Row/−Row, Submit DML |
+| Column resize / reorder / sort | Header drag edge, drag reorder, click sort |
+| Cell / table context menus | Filter WHERE, Copy, SQL Scripts, DDL stub |
+| Drag-and-drop table → console | Explorer hold-drag → console drop zone |
+| Full dump / diagrams / schema compare | Not yet |
 
 *Source: user-supplied DataGrip product walkthrough, adapted for Grip docs 2026-10-15.*
