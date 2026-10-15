@@ -16,6 +16,8 @@ Usage: validate-dynamic.sh <command>
 Commands:
   index <fqcn-substring>   Grep jar-index files for validation target classes
   logs [path]              Tail JDBC/RMI/introspection lines from idea.log
+  ui-logs [path]           Tail UI/sync/Refresh/SqlResolve lines from idea.log (Phase 2c)
+  ui-runbook               Print Phase 2c click-path checklist (Refresh / Select In / Alt-Enter)
   jdbc-children            List RemoteJdbcServer child JVM processes + listen ports
   rmi-ports                Parse latest Port/ServicesPort/ID lines from idea.log
   all                      Run jdbc-children + rmi-ports + logs (last 30 matches)
@@ -52,9 +54,44 @@ cmd_rmi_ports() {
   rg 'Port/ServicesPort/ID|Started remote process on' "$LOG_FILE" | tail -10
 }
 
+cmd_ui_logs() {
+  local f="${1:-$LOG_FILE}"
+  [[ -f "$f" ]] || { echo "No log: $f" >&2; exit 1; }
+  echo "== UI / sync / resolve markers in $f =="
+  rg -i 'DataSourceSync|RunIntrospection|performManualIntrospection|IntrospectionQueryContext|SyncIntrospection|RefreshModel|DatabaseView\.|SelectInDatabaseView|SqlResolveInspection|Last Action: DatabaseView' "$f" | tail -50 || true
+}
+
+cmd_ui_runbook() {
+  cat <<'EOF'
+Phase 2c UI runbook (see reports/13-ui-validation.md)
+
+A) Refresh schema
+   1. Optional: add -Didea.log.debug.categories=… (report §2.1), restart DataGrip
+   2. Database tool window → select data source → toolbar Refresh
+   3. ./scripts/validate-dynamic.sh ui-logs
+
+B) Select In Database
+   1. SQL console → caret on resolved table name
+   2. Navigate → Select In → Database
+   3. Tree should focus matching node
+
+C) SqlResolve Alt-Enter
+   1. Console: SELECT * FROM totally_missing_table_xyz;
+   2. Alt-Enter → Refresh schema… / Introspect schema…
+   3. ./scripts/validate-dynamic.sh ui-logs
+
+Index check:
+   ./scripts/validate-dynamic.sh index 'RefreshModelAction|SelectInDatabaseView|SqlResolveInspection'
+
+Grip UI: cargo run -p grip-ui → Audit reports → 13-ui-validation
+EOF
+}
+
 case "${1:-}" in
   index) shift; cmd_index "$@" ;;
   logs) shift; cmd_logs "$@" ;;
+  ui-logs) shift; cmd_ui_logs "$@" ;;
+  ui-runbook) cmd_ui_runbook ;;
   jdbc-children) cmd_jdbc_children ;;
   rmi-ports) cmd_rmi_ports ;;
   all)

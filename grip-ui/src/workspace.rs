@@ -1,4 +1,5 @@
 use crate::model::DbVendor;
+use crate::text_ar;
 use crate::theme::JetBrainsDark;
 use egui::{Color32, RichText, ScrollArea, Ui, Vec2};
 
@@ -279,17 +280,23 @@ fn table_view(
         ui.label(RichText::new("Tx: Auto").small().color(JetBrainsDark::TEXT_DIM));
         ui.separator();
         ui.label(RichText::new("WHERE").small().color(JetBrainsDark::TEXT_DIM));
-        ui.add(
+        let where_resp = ui.add(
             egui::TextEdit::singleline(where_clause)
                 .desired_width(180.0)
                 .hint_text("condition"),
         );
         ui.label(RichText::new("ORDER BY").small().color(JetBrainsDark::TEXT_DIM));
-        ui.add(
+        let order_resp = ui.add(
             egui::TextEdit::singleline(order_clause)
                 .desired_width(120.0)
                 .hint_text("column"),
         );
+        if (where_resp.lost_focus() || order_resp.lost_focus())
+            && ui.input(|i| i.key_pressed(egui::Key::Enter))
+            && !busy
+        {
+            action.refresh_table = true;
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(
                 RichText::new(format!("{schema}.{table}"))
@@ -310,6 +317,13 @@ fn table_view(
     });
 }
 
+const CELL_PAD_X: f32 = 10.0;
+const CELL_PAD_Y: f32 = 4.0;
+const ROW_NUM_W: f32 = 44.0;
+const MIN_COL_W: f32 = 72.0;
+const MAX_COL_W: f32 = 280.0;
+const CHAR_W: f32 = 7.5;
+
 fn data_grid(
     ui: &mut Ui,
     data: &GridData,
@@ -324,32 +338,87 @@ fn data_grid(
         );
         return;
     }
+
+    let col_widths = column_widths(data);
+
     ScrollArea::both().auto_shrink([false; 2]).show(ui, |ui| {
         egui::Grid::new("data_grid")
-            .striped(false)
-            .spacing([0.0, 0.0])
+            .striped(true)
+            .spacing([1.0, 1.0])
+            .min_col_width(MIN_COL_W)
+            .max_col_width(MAX_COL_W)
             .show(ui, |ui| {
-                ui.label(row_header_cell("#"));
-                for c in &data.columns {
-                    let head = if !console_mode && c == "id" {
+                // Header row
+                grid_cell(
+                    ui,
+                    ROW_NUM_W,
+                    JetBrainsDark::HEADER,
+                    RichText::new("#")
+                        .size(11.0)
+                        .strong()
+                        .color(JetBrainsDark::TEXT_DIM),
+                    false,
+                );
+                for (ci, c) in data.columns.iter().enumerate() {
+                    let head = if !console_mode && c.eq_ignore_ascii_case("id") {
                         format!("🔑 {c}")
                     } else {
                         c.clone()
                     };
-                    ui.label(header_cell(&head));
+                    grid_cell(
+                        ui,
+                        col_widths[ci],
+                        JetBrainsDark::HEADER,
+                        RichText::new(text_ar::for_display(&head))
+                            .size(12.0)
+                            .strong()
+                            .color(JetBrainsDark::TEXT),
+                        false,
+                    );
                 }
                 ui.end_row();
 
                 for (ri, row) in data.rows.iter().enumerate() {
-                    ui.label(row_num_cell(ri + 1));
+                    let row_bg = if ri % 2 == 0 {
+                        JetBrainsDark::EDITOR
+                    } else {
+                        JetBrainsDark::ROW_ALT
+                    };
+                    grid_cell(
+                        ui,
+                        ROW_NUM_W,
+                        row_bg,
+                        RichText::new((ri + 1).to_string())
+                            .size(11.0)
+                            .color(JetBrainsDark::TEXT_DIM),
+                        false,
+                    );
                     for (ci, cell) in row.iter().enumerate() {
                         let is_sel = selected
                             .map(|(r, c)| r == ri && c == ci)
                             .unwrap_or(false);
-                        let resp = ui.add(
-                            egui::Label::new(body_cell(cell, is_sel))
-                                .sense(egui::Sense::click()),
+                        let bg = if is_sel {
+                            JetBrainsDark::ACCENT
+                        } else {
+                            row_bg
+                        };
+                        let color = if is_sel {
+                            Color32::WHITE
+                        } else {
+                            JetBrainsDark::TEXT
+                        };
+                        let display = text_ar::for_display(&truncate_display(cell, 48));
+                        let w = col_widths.get(ci).copied().unwrap_or(MIN_COL_W);
+                        let resp = grid_cell(
+                            ui,
+                            w,
+                            bg,
+                            RichText::new(display).size(12.5).color(color),
+                            true,
                         );
+                        if !cell.is_empty() && cell != "NULL" {
+                            resp.clone().on_hover_text(text_ar::for_display(cell));
+                        }
                         if resp.clicked() {
                             *selected = Some((ri, ci));
                         }
@@ -360,48 +429,90 @@ fn data_grid(
     });
 }
 
-fn header_cell(text: &str) -> RichText {
-    RichText::new(text)
-        .strong()
-        .size(12.0)
-        .color(JetBrainsDark::TEXT)
-        .background_color(JetBrainsDark::HEADER)
-}
-
-fn row_header_cell(text: &str) -> RichText {
-    RichText::new(text)
-        .size(11.0)
-        .color(JetBrainsDark::TEXT_DIM)
-        .background_color(JetBrainsDark::HEADER)
-}
-
-fn row_num_cell(n: usize) -> RichText {
-    RichText::new(n.to_string())
-        .size(11.0)
-        .color(JetBrainsDark::TEXT_DIM)
-        .background_color(JetBrainsDark::ROW_ALT)
-}
-
-fn body_cell(text: &str, selected: bool) -> RichText {
-    let bg = if selected {
-        JetBrainsDark::ACCENT
+fn grid_cell(
+    ui: &mut Ui,
+    width: f32,
+    fill: Color32,
+    text: RichText,
+    clickable: bool,
+) -> egui::Response {
+    let sense = if clickable {
+        egui::Sense::click()
     } else {
-        Color32::TRANSPARENT
+        egui::Sense::hover()
     };
-    RichText::new(text)
-        .size(12.0)
-        .color(if selected {
-            Color32::WHITE
-        } else {
-            JetBrainsDark::TEXT
+    egui::Frame::none()
+        .fill(fill)
+        .stroke(egui::Stroke::new(1.0, JetBrainsDark::BORDER))
+        .inner_margin(egui::Margin::symmetric(CELL_PAD_X, CELL_PAD_Y))
+        .show(ui, |ui| {
+            ui.set_min_width(width - CELL_PAD_X * 2.0);
+            ui.set_max_width(width - CELL_PAD_X * 2.0);
+            ui.add(egui::Label::new(text).truncate());
         })
-        .background_color(bg)
+        .response
+        .interact(sense)
 }
+
+fn column_widths(data: &GridData) -> Vec<f32> {
+    let mut widths: Vec<f32> = data
+        .columns
+        .iter()
+        .map(|c| ((c.chars().count() as f32) * CHAR_W + CELL_PAD_X * 2.0).max(MIN_COL_W))
+        .collect();
+    for row in data.rows.iter().take(80) {
+        for (i, cell) in row.iter().enumerate() {
+            if i >= widths.len() {
+                break;
+            }
+            let visible = truncate_display(cell, 48);
+            let w = (visible.chars().count() as f32) * CHAR_W + CELL_PAD_X * 2.0;
+            widths[i] = widths[i].max(w.min(MAX_COL_W)).max(MIN_COL_W);
+        }
+    }
+    widths
+}
+
+fn truncate_display(s: &str, max_chars: usize) -> String {
+    let count = s.chars().count();
+    if count <= max_chars {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max_chars.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
 
 pub fn build_table_sql(vendor: DbVendor, schema: &str, table: &str, limit: u32) -> String {
-    match vendor {
-        DbVendor::MySQL => format!("SELECT * FROM `{schema}`.`{table}` LIMIT {limit}"),
-        DbVendor::PostgreSQL => format!("SELECT * FROM \"{schema}\".\"{table}\" LIMIT {limit}"),
-        DbVendor::Sqlite => format!("SELECT * FROM \"{table}\" LIMIT {limit}"),
+    build_table_sql_filtered(vendor, schema, table, "", "", limit)
+}
+
+/// DataGrip-style data editor query: `SELECT * FROM … [WHERE …] [ORDER BY …] LIMIT n`.
+pub fn build_table_sql_filtered(
+    vendor: DbVendor,
+    schema: &str,
+    table: &str,
+    where_clause: &str,
+    order_clause: &str,
+    limit: u32,
+) -> String {
+    let from = match vendor {
+        DbVendor::MySQL => format!("`{schema}`.`{table}`"),
+        DbVendor::PostgreSQL => format!("\"{schema}\".\"{table}\""),
+        DbVendor::Sqlite => format!("\"{table}\""),
+    };
+    let mut sql = format!("SELECT * FROM {from}");
+    let w = where_clause.trim();
+    if !w.is_empty() {
+        sql.push_str(" WHERE ");
+        sql.push_str(w);
     }
+    let o = order_clause.trim();
+    if !o.is_empty() {
+        sql.push_str(" ORDER BY ");
+        sql.push_str(o);
+    }
+    sql.push_str(&format!(" LIMIT {limit}"));
+    sql
 }

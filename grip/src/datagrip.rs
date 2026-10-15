@@ -185,6 +185,14 @@ const REPORTS: &[Report] = &[
         kind: ReportKind::DynamicValidation,
         markdown: include_str!("../../reports/12-dynamic-validation-2b.md"),
     },
+    Report {
+        id: "13-ui-validation",
+        file: "13-ui-validation.md",
+        title: "Phase 2c — UI dynamic validation runbook",
+        subsystem: None,
+        kind: ReportKind::DynamicValidation,
+        markdown: include_str!("../../reports/13-ui-validation.md"),
+    },
 ];
 
 #[cfg(test)]
@@ -192,8 +200,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_has_fourteen_reports() {
-        assert_eq!(reports().len(), 14);
+    fn catalog_has_fifteen_reports() {
+        assert_eq!(reports().len(), 15);
+        assert!(report_by_id("13-ui-validation").is_some());
+        assert_eq!(
+            report_by_id("13-ui-validation").unwrap().kind,
+            ReportKind::DynamicValidation
+        );
     }
 
     #[test]

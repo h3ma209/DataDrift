@@ -172,23 +172,24 @@ pub fn tree(
             }
             ui.label(RichText::new(vendor_icon(ds.vendor)).size(13.0));
             let label = ds.tree_label();
-            let row_selected = selected;
-            let resp = ui.add(
-                egui::Label::new(
-                    RichText::new(&label)
-                        .size(13.0)
-                        .color(vendor_color(ds.vendor)),
-                )
-                .sense(egui::Sense::click())
-                .selectable(row_selected),
-            );
-            if row_selected {
-                ui.painter().rect_filled(
-                    resp.rect.expand(2.0),
-                    3.0,
-                    Color32::from_rgb(55, 58, 63),
-                );
-            }
+            let fill = if selected {
+                Color32::from_rgb(55, 58, 63)
+            } else {
+                Color32::TRANSPARENT
+            };
+            let resp = egui::Frame::none()
+                .fill(fill)
+                .inner_margin(egui::Margin::symmetric(4.0, 1.0))
+                .rounding(3.0)
+                .show(ui, |ui| {
+                    ui.label(
+                        RichText::new(&label)
+                            .size(13.0)
+                            .color(vendor_color(ds.vendor)),
+                    );
+                })
+                .response
+                .interact(egui::Sense::click());
             if resp.clicked() {
                 hit.select_source = Some(i);
                 if connected {
@@ -296,26 +297,37 @@ fn render_tables_folder(
     }
     ui.indent(format!("tbl-{ds_id}-{}", schema.name), |ui| {
         for table in &schema.children {
-            let is_sel = state.selected_table.as_ref() == Some(&(ds_id, schema.name.clone(), table.clone()));
+            if table.trim().is_empty() {
+                continue;
+            }
+            let is_sel = state.selected_table.as_ref()
+                == Some(&(ds_id, schema.name.clone(), table.clone()));
             ui.horizontal(|ui| {
                 ui.add_space(8.0);
-                ui.label(RichText::new("▦").size(12.0).color(Color32::from_rgb(130, 170, 130)));
-                let resp = ui.add(
-                    egui::Label::new(
-                        RichText::new(table)
-                            .size(12.0)
-                            .color(JetBrainsDark::TEXT),
-                    )
-                    .sense(egui::Sense::click())
-                    .selectable(is_sel),
+                ui.label(
+                    RichText::new("▦")
+                        .size(12.0)
+                        .color(Color32::from_rgb(130, 170, 130)),
                 );
-                if is_sel {
-                    ui.painter().rect_filled(
-                        resp.rect.expand(2.0),
-                        2.0,
-                        Color32::from_rgb(55, 58, 63),
-                    );
-                }
+                let fill = if is_sel {
+                    Color32::from_rgb(55, 58, 63)
+                } else {
+                    Color32::TRANSPARENT
+                };
+                let text_color = if is_sel {
+                    Color32::WHITE
+                } else {
+                    JetBrainsDark::TEXT
+                };
+                let resp = egui::Frame::none()
+                    .fill(fill)
+                    .inner_margin(egui::Margin::symmetric(4.0, 1.0))
+                    .rounding(2.0)
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(table).size(12.0).color(text_color));
+                    })
+                    .response
+                    .interact(egui::Sense::click());
                 if resp.clicked() {
                     state.selected_table = Some((ds_id, schema.name.clone(), table.clone()));
                     hit.open_table = Some((schema.name.clone(), table.clone()));

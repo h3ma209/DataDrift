@@ -2,12 +2,15 @@ use crate::connection::{ConnectionWorker, WorkerRequest, WorkerResponse};
 use crate::explorer::{self, ExplorerState};
 use crate::jdbc::validation_errors;
 use crate::model::{DataSource, DbVendor};
+use crate::reports::ReportsBrowser;
 use crate::store;
 use crate::theme::JetBrainsDark;
 use crate::workspace::{self, Workspace, WorkspaceTab};
 use egui::{Color32, RichText, ScrollArea};
 
 pub struct GripApp {
+    mode: AppMode,
+    reports: ReportsBrowser,
     sources: Vec<DataSource>,
     active_source: usize,
     show_datasource_dialog: bool,
@@ -18,6 +21,12 @@ pub struct GripApp {
     busy: bool,
     worker: ConnectionWorker,
     status_cursor: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AppMode {
+    Shell,
+    Audit,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -37,6 +46,8 @@ impl GripApp {
             s.sync_jdbc_url();
         }
         Self {
+            mode: AppMode::Shell,
+            reports: ReportsBrowser::default(),
             sources,
             active_source: 0,
             show_datasource_dialog: false,
@@ -45,7 +56,7 @@ impl GripApp {
             workspace: Workspace::default(),
             console: vec![(
                 true,
-                "Grip — connect in toolbar, browse tables in Database Explorer.".into(),
+                "Grip — Audit tab browses embedded REA reports; Shell is the DB recreation.".into(),
             )],
             busy: false,
             worker: ConnectionWorker::spawn(),
@@ -198,35 +209,82 @@ impl eframe::App for GripApp {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("DG").strong().color(JetBrainsDark::ACCENT));
-                    ui.label(
-                        RichText::new("hakki-backend")
-                            .size(13.0)
-                            .color(JetBrainsDark::TEXT),
-                    );
+                    ui.label(RichText::new("Grip").strong().color(JetBrainsDark::ACCENT));
                     ui.separator();
-                    if ui.button("+ Data Source").clicked() {
-                        let id = self.sources.iter().map(|s| s.id).max().unwrap_or(0) + 1;
-                        self.sources.push(DataSource::new(id));
-                        self.active_source = self.sources.len() - 1;
-                        self.show_datasource_dialog = true;
-                    }
-                    if ui
-                        .add_enabled(!self.busy, egui::Button::new("Test Connection"))
-                        .clicked()
-                    {
-                        let ds = self.active_ds().clone();
-                        self.busy = true;
-                        self.worker.send(WorkerRequest::Test(ds));
-                    }
-                    if ui.add_enabled(!self.busy, egui::Button::new("Connect")).clicked() {
-                        let ds = self.active_ds().clone();
-                        self.busy = true;
-                        self.worker.send(WorkerRequest::Connect(ds));
+                    ui.selectable_value(&mut self.mode, AppMode::Audit, "Audit reports");
+                    ui.selectable_value(&mut self.mode, AppMode::Shell, "DB shell");
+                    if self.mode == AppMode::Shell {
+                        ui.separator();
+                        ui.label(
+                            RichText::new(self.active_ds().tree_label())
+                                .size(13.0)
+                                .color(JetBrainsDark::TEXT),
+                        );
+                        ui.separator();
+                        if ui.button("+ Data Source").clicked() {
+                            let id = self.sources.iter().map(|s| s.id).max().unwrap_or(0) + 1;
+                            self.sources.push(DataSource::new(id));
+                            self.active_source = self.sources.len() - 1;
+                            self.show_datasource_dialog = true;
+                        }
+                        if ui
+                            .add_enabled(!self.busy, egui::Button::new("Test Connection"))
+                            .clicked()
+                        {
+                            let ds = self.active_ds().clone();
+                            self.busy = true;
+                            self.worker.send(WorkerRequest::Test(ds));
+                        }
+                        if ui.add_enabled(!self.busy, egui::Button::new("Connect")).clicked() {
+                            let ds = self.active_ds().clone();
+                            self.busy = true;
+                            self.worker.send(WorkerRequest::Connect(ds));
+                        }
+                    } else {
+                        ui.separator();
+                        ui.label(
+                            RichText::new("embedded via grip::datagrip::reports()")
+                                .small()
+                                .color(JetBrainsDark::TEXT_DIM),
+                        );
                     }
                 });
             });
 
+        match self.mode {
+            AppMode::Audit => self.ui_audit(ctx),
+            AppMode::Shell => self.ui_shell(ctx),
+        }
+    }
+}
+
+impl GripApp {
+    fn ui_audit(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::none()
+                    .fill(JetBrainsDark::BG)
+                    .inner_margin(egui::Margin::same(10.0)),
+            )
+            .show(ctx, |ui| {
+                ui.heading(
+                    RichText::new("DataGrip audit knowledge")
+                        .size(16.0)
+                        .color(JetBrainsDark::TEXT),
+                );
+                ui.label(
+                    RichText::new(
+                        "List / search / filter REA reports. Markdown headings, fences, lists rendered; rest plain text.",
+                    )
+                    .small()
+                    .color(JetBrainsDark::TEXT_DIM),
+                );
+                ui.add_space(6.0);
+                self.reports.ui(ui);
+            });
+    }
+
+    fn ui_shell(&mut self, ctx: &egui::Context) {
         let mut explorer_actions = explorer::ExplorerActions::default();
         let mut explorer_hit = explorer::ExplorerHit::default();
         egui::SidePanel::left("explorer")
@@ -316,11 +374,20 @@ impl eframe::App for GripApp {
                 ds_id,
                 schema,
                 table,
+                where_clause,
+                order_clause,
                 ..
             } = &self.workspace.tabs[self.workspace.active]
             {
                 if let Some(ds) = self.ds_by_id(*ds_id).cloned() {
-                    let sql = workspace::build_table_sql(ds.vendor, schema, table, 200);
+                    let sql = workspace::build_table_sql_filtered(
+                        ds.vendor,
+                        schema,
+                        table,
+                        where_clause,
+                        order_clause,
+                        200,
+                    );
                     self.run_query(ds, sql, *id);
                 }
             }

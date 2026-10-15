@@ -258,6 +258,9 @@ fn group_schema_tables(pairs: Vec<(String, String)>) -> Vec<SchemaNode> {
     use std::collections::BTreeMap;
     let mut map: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (schema, table) in pairs {
+        if schema.trim().is_empty() || table.trim().is_empty() {
+            continue;
+        }
         map.entry(schema).or_default().push(table);
     }
     map.into_iter()
@@ -353,8 +356,9 @@ fn run_query(ds: &DataSource, sql: &str, tab_id: u64) -> WorkerResponse {
                         while let Ok(Some(row)) = q.next() {
                             let mut line = Vec::new();
                             for i in 0..col_count {
-                                let v: rusqlite::types::Value = row.get(i).unwrap_or(rusqlite::types::Value::Null);
-                                line.push(format!("{v:?}"));
+                                let v: rusqlite::types::Value =
+                                    row.get(i).unwrap_or(rusqlite::types::Value::Null);
+                                line.push(sqlite_value_display(v));
                             }
                             rows.push(line);
                             if rows.len() >= 500 {
@@ -438,6 +442,25 @@ fn run_query(ds: &DataSource, sql: &str, tab_id: u64) -> WorkerResponse {
                 Err(e) => query_result(tab_id, false, e.to_string(), vec![], vec![]),
             }
         }
+    }
+}
+
+fn sqlite_value_display(v: rusqlite::types::Value) -> String {
+    match v {
+        rusqlite::types::Value::Null => "NULL".into(),
+        rusqlite::types::Value::Integer(n) => n.to_string(),
+        rusqlite::types::Value::Real(f) => {
+            if f.fract() == 0.0 && f.is_finite() {
+                format!("{:.0}", f)
+            } else {
+                f.to_string()
+            }
+        }
+        rusqlite::types::Value::Text(s) => s,
+        rusqlite::types::Value::Blob(b) => match std::str::from_utf8(&b) {
+            Ok(s) => s.to_string(),
+            Err(_) => format!("<blob {} bytes>", b.len()),
+        },
     }
 }
 

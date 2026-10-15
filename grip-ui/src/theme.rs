@@ -1,4 +1,4 @@
-use egui::{Color32, Context, Rounding, Stroke, Visuals};
+use egui::{Color32, Context, FontData, FontDefinitions, FontFamily, Rounding, Stroke, Visuals};
 
 pub struct JetBrainsDark;
 
@@ -18,7 +18,16 @@ impl JetBrainsDark {
     pub const SUCCESS: Color32 = Color32::from_rgb(75, 155, 95);
 }
 
+/// Prefer system fonts that cover Arabic / CJK (egui default lacks those glyphs → □□□□).
+/// Order: Arial Unicode first (broad coverage + decent Arabic shaping in egui).
+const FALLBACK_FONT_PATHS: &[&str] = &[
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    "/Library/Fonts/Arial Unicode.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+];
+
 pub fn apply(ctx: &Context) {
+    install_fonts(ctx);
     let mut v = Visuals::dark();
     v.dark_mode = true;
     v.override_text_color = Some(JetBrainsDark::TEXT);
@@ -45,4 +54,41 @@ pub fn apply(ctx: &Context) {
     v.widgets.inactive.rounding = r;
     v.widgets.active.rounding = r;
     ctx.set_visuals(v);
+}
+
+fn install_fonts(ctx: &Context) {
+    let mut fonts = FontDefinitions::default();
+    let mut loaded = false;
+    for path in FALLBACK_FONT_PATHS {
+        let Ok(bytes) = std::fs::read(path) else {
+            continue;
+        };
+        fonts
+            .font_data
+            .insert("grip_unicode".into(), FontData::from_owned(bytes));
+        // Put first so Arabic/RTL text uses this before egui’s Latin-only default.
+        if let Some(prop) = fonts.families.get_mut(&FontFamily::Proportional) {
+            prop.insert(0, "grip_unicode".into());
+        }
+        if let Some(mono) = fonts.families.get_mut(&FontFamily::Monospace) {
+            // Keep default mono for code; append unicode as fallback for Arabic in SQL.
+            mono.push("grip_unicode".into());
+        }
+        loaded = true;
+        break;
+    }
+    // Slightly larger UI text improves Arabic glyph clarity in grids.
+    if loaded {
+        let mut style = (*ctx.style()).clone();
+        style.text_styles.insert(
+            egui::TextStyle::Body,
+            egui::FontId::new(13.0, FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            egui::TextStyle::Monospace,
+            egui::FontId::new(12.5, FontFamily::Monospace),
+        );
+        ctx.set_style(style);
+    }
+    ctx.set_fonts(fonts);
 }

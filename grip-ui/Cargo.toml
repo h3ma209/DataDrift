@@ -5,6 +5,7 @@ edition = "2021"
 description = "DataGrip-style connection shell (Grip recreation)"
 
 [dependencies]
+grip = { path = "../grip" }
 eframe = { version = "0.29", default-features = true, features = ["default_fonts", "glow"] }
 egui = "0.29"
 serde = { version = "1", features = ["derive"] }
@@ -13,3 +14,5 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 postgres = "0.19"
 mysql = "23"
 url = "2"
+arabic_reshaper = "0.4"
+unicode-bidi = "0.3"

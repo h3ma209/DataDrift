@@ -42,10 +42,11 @@ macOS .app bundle
 
 ## Subsystem reports (architecture audit)
 
-**Status:** Subsystems **1–4 complete** (static pass, build **DB-261.24374.56**). **Phase 2 dynamic validation** — [11-dynamic-validation.md](./11-dynamic-validation.md) (2a) + [12-dynamic-validation-2b.md](./12-dynamic-validation-2b.md) (2b remaining items; no secrets). UI/session bytecode is in `plugins/DatabaseTools/lib/modules/intellij.database.{impl,core.impl,connectivity}.jar`. Cross-ref: `tmp/jar-index.txt` (`Contents/lib/` only) and **`tmp/jar-index-database-modules.txt`** (51 DatabaseTools module JARs → class/path lookup). Helper: `scripts/validate-dynamic.sh`.
+**Status:** Subsystems **1–4 complete** (static pass, build **DB-261.24374.56**). **Phase 2 dynamic validation** — [11-dynamic-validation.md](./11-dynamic-validation.md) (2a) + [12-dynamic-validation-2b.md](./12-dynamic-validation-2b.md) (2b) + [13-ui-validation.md](./13-ui-validation.md) (2c UI runbook; no secrets). UI/session bytecode is in `plugins/DatabaseTools/lib/modules/intellij.database.{impl,core.impl,connectivity}.jar`. Cross-ref: `tmp/jar-index.txt` (`Contents/lib/` only) and **`tmp/jar-index-database-modules.txt`** (51 DatabaseTools module JARs → class/path lookup). Helper: `scripts/validate-dynamic.sh` (`ui-logs` / `ui-runbook`).
 
 | Report | Topic |
 |--------|--------|
+| [13-ui-validation.md](./13-ui-validation.md) | **Phase 2c** — UI validation runbook (Refresh / Select In / SqlResolve click paths + log scrapers) |
 | [12-dynamic-validation-2b.md](./12-dynamic-validation-2b.md) | **Phase 2b** — resolve→`RunIntrospection` bytecode, sync procedure, PasswordSafe service-name, UI/Frida recipes |
 | [11-dynamic-validation.md](./11-dynamic-validation.md) | **Phase 2a** — RMI/RemoteJdbcServer log+`lsof` proof, JVM/log breakpoints, REA/Frida notes |
 | [10-architecture-synthesis.md](./10-architecture-synthesis.md) | **Cross-subsystem** — launch → connect → introspect → UI (mermaid + index) |
@@ -55,3 +56,5 @@ macOS .app bundle
 | [09-ui-component-mapping.md](./09-ui-component-mapping.md) | Subsystem 4 — `DatabaseToolWindowFactory`, `DatabaseViewPanel`, `JdbcConsole` ↔ `DatabaseSession`, Services view, action `DataKey`s |
 
 See sibling reports (`01`–`06`) for bundle/JAR inventory detail.
+
+**Rust:** all reports here embedded in workspace crate [`grip`](../grip/) — `grip::datagrip::reports()` / `report_by_id` (see repo [README](../README.md)).

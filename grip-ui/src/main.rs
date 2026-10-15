@@ -4,6 +4,8 @@ mod explorer;
 mod jdbc;
 mod model;
 mod mysql_format;
+mod reports;
+mod text_ar;
 mod store;
 mod theme;
 mod workspace;
@@ -11,8 +13,8 @@ mod workspace;
 fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1100.0, 720.0])
-            .with_title("DataGrip — Grip"),
+            .with_inner_size([1180.0, 760.0])
+            .with_title("Grip — DataGrip audit"),
         ..Default::default()
     };
     eframe::run_native(
