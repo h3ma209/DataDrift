@@ -1,4 +1,4 @@
-//! Grip — DataGrip reverse-engineering knowledge for the Grip recreation.
+//! DataDrift — DataGrip reverse-engineering knowledge for the DataDrift recreation.
 //!
 //! Audit markdown lives in repo-root [`reports/`](../../reports/). Access via
 //! [`datagrip::reports`]. Large JAR indexes stay under `tmp/` (gitignored);

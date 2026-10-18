@@ -255,8 +255,8 @@ Modular fork: `IntellijLoader` → repo from `module-descriptors.dat` → `Modul
 
 ## 5. Evidence
 
-- Decompile: Vineflower 1.11.1 → `/Users/hema/Desktop/Experiments/Grip/tmp/decompiled*`
-- Index: `/Users/hema/Desktop/Experiments/Grip/tmp/jar-index.txt`
+- Decompile: Vineflower 1.11.1 → `/Users/hema/Desktop/tmp/tmp/decompiled*`
+- Index: `/Users/hema/Desktop/tmp/tmp/jar-index.txt`
 - REA MCP: connection error in source session
 
 ### 5.1 Lifecycle class → JAR map (from `jar-index.txt`)

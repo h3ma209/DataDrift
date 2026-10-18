@@ -16,7 +16,7 @@ pub struct HistoryEntry {
 
 fn path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".grip").join("query_history.json")
+    PathBuf::from(home).join(".datadrift").join("query_history.json")
 }
 
 pub fn load() -> Vec<HistoryEntry> {

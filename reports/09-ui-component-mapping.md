@@ -5,7 +5,7 @@
 **Focus:** Database tool window, SQL/query editors, console binding → `DatabaseSession` / `LocalDataSource` / JDBC connections  
 **Method:** `META-INF/plugin.xml` (DatabaseTools + datagrip-impl), `jar tf`, `javap -public/-c` on module JARs under `plugins/DatabaseTools/lib/modules/`  
 **REA MCP:** unavailable (connection error at analysis time)  
-**Jar index note:** `/Users/hema/Desktop/Experiments/Grip/tmp/jar-index.txt` indexes **`Contents/lib/` only** (~364 JARs). Database UI bytecode lives primarily in **`plugins/DatabaseTools/lib/modules/intellij.database.*.jar`** — use **`tmp/jar-index-database-modules.txt`** (same `jar_basename:entry` format) for module JAR cross-ref. Module paths below remain authoritative for architecture.
+**Jar index note:** `/Users/hema/Desktop/tmp/tmp/jar-index.txt` indexes **`Contents/lib/` only** (~364 JARs). Database UI bytecode lives primarily in **`plugins/DatabaseTools/lib/modules/intellij.database.*.jar`** — use **`tmp/jar-index-database-modules.txt`** (same `jar_basename:entry` format) for module JAR cross-ref. Module paths below remain authoritative for architecture.
 
 **Related:** [07-core-architecture-lifecycle.md](./07-core-architecture-lifecycle.md), [02-jdbc-connections.md](./02-jdbc-connections.md), [05-database-plugin-jar.md](./05-database-plugin-jar.md), [04-datagrip-impl-jar.md](./04-datagrip-impl-jar.md)
 

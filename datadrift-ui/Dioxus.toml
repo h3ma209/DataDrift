@@ -1,0 +1,10 @@
+[application]
+name = "DataDrift"
+default_platform = "desktop"
+
+[web.app]
+title = "DataDrift"
+
+[bundle]
+identifier = "dev.datadrift.app"
+publisher = "DataDrift"

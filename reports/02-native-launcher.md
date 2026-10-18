@@ -86,7 +86,7 @@ Implements trait `LaunchConfiguration`:
 
 ~104 import symbols reported (partial inventory).
 
-## Takeaway for Grip
+## Takeaway for DataDrift
 
 - **Hook/patch surface:** `main_lib`, `DefaultLaunchConfiguration::*`, `xplat_launcher::java::*`, env vars (`DATAGRIP_*`, `JAVA_HOME`, `REMOTE_DEV_*`).
 - **Not where SQL/DB logic lives** — that stays in JARs after JVM start.

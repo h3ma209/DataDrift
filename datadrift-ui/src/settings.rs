@@ -40,7 +40,7 @@ impl Default for UiSettings {
 
 fn path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".grip").join("ui_settings.json")
+    PathBuf::from(home).join(".datadrift").join("ui_settings.json")
 }
 
 pub fn load() -> UiSettings {

@@ -2,7 +2,7 @@
 
 A detailed walkthrough of how DataGrip works: the workflow, windows, toolbars, right-click menus, features and settings. Menu names and some option labels shift slightly between versions, so treat this as a map and expect small differences in your build.
 
-**Role in Grip:** product map for the recreation shell (`grip-ui`). Companion to architecture reports `07`–`13`.
+**Role in Grip:** product map for the recreation shell (`datadrift-ui`). Companion to architecture reports `07`–`13`.
 
 ---
 

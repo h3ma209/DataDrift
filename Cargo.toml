@@ -1,5 +1,5 @@
 [workspace]
-members = ["grip", "grip-ui"]
+members = ["datadrift", "datadrift-ui"]
 resolver = "2"
 
 [workspace.package]

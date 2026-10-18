@@ -1,4 +1,4 @@
-# Grip native drivers (pure Rust)
+# DataDrift native drivers (pure Rust)
 
 **No JVM / JDBC runtime.** DataGrip JDBC class names are kept only as documentation labels in the Drivers tab.
 
@@ -25,7 +25,7 @@ URL template map extracted from DataGrip JARs: [16-datagrip-driver-url-templates
 
 ## Query history & export
 
-- Executions append to `~/.grip/query_history.json` (last 200) — Services → **History** (guide §7.6).
+- Executions append to `~/.datadrift/query_history.json` (last 200) — Services → **History** (guide §7.6).
 - Result grids: **Export CSV** → clipboard (guide §7 / §10).
 
 ## Related

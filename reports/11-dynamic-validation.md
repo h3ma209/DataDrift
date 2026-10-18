@@ -125,8 +125,8 @@ Started remote process on: 127.0.0.1:<registryPort> with service port <servicePo
 Verify live:
 
 ```bash
-/Users/hema/Desktop/Experiments/Grip/scripts/validate-dynamic.sh jdbc-children
-/Users/hema/Desktop/Experiments/Grip/scripts/validate-dynamic.sh rmi-ports
+/Users/hema/Desktop/tmp/scripts/validate-dynamic.sh jdbc-children
+/Users/hema/Desktop/tmp/scripts/validate-dynamic.sh rmi-ports
 ```
 
 ### 2.3 IDE-side breakpoint classes (connect pipeline)

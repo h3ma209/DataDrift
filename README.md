@@ -1,4 +1,4 @@
-# DataGrip REA analysis (Grip)
+# DataGrip REA analysis (DataDrift)
 
 Static + dynamic reverse-engineering pass on **DataGrip 2026.1.3** (`DB-261.24374.56`) at `/Applications/DataGrip.app`, produced with **REA** and bytecode inspection.
 
@@ -6,18 +6,18 @@ Rust workspace:
 
 | Crate | Role |
 |-------|------|
-| [`grip`](grip/) | Knowledge lib — embeds `reports/*.md`, exposes `grip::datagrip::reports()` |
-| [`grip-ui`](grip-ui/) | **Dioxus desktop** shell — modern UI + pure-Rust drivers |
+| [`datadrift`](datadrift/) | Knowledge lib — embeds `reports/*.md`, exposes `datadrift::datagrip::reports()` |
+| [`datadrift-ui`](datadrift-ui/) | **Dioxus desktop** shell — modern UI + pure-Rust drivers |
 
 ```bash
 cargo check          # workspace
-cargo test -p grip   # report catalog tests
-cargo run -p grip-ui # Dioxus desktop (webview)
+cargo test -p datadrift   # report catalog tests
+cargo run -p datadrift-ui # Dioxus desktop (webview)
 ```
 
 ## Reports (markdown assets)
 
-Canonical source: [`reports/`](reports/). Embedded at compile time by the `grip` crate.
+Canonical source: [`reports/`](reports/). Embedded at compile time by the `datadrift` crate.
 
 ### Index & inventory
 
@@ -47,10 +47,10 @@ Canonical source: [`reports/`](reports/). Embedded at compile time by the `grip`
 
 Evidence bundle: [rea-evidence/session-evidence.json](rea-evidence/session-evidence.json) (~17 MB).
 
-## Rust API (`grip::datagrip`)
+## Rust API (`datadrift::datagrip`)
 
 ```rust
-use grip::datagrip::{report_by_id, reports, ReportKind};
+use datadrift::datagrip::{report_by_id, reports, ReportKind};
 
 for r in reports() {
     println!("{} [{}] — {} bytes", r.id, r.file, r.len());
@@ -62,7 +62,7 @@ assert_eq!(jdbc.kind, ReportKind::Subsystem);
 let _body: &str = jdbc.markdown;
 ```
 
-Non-embedded helpers (repo-relative constants in `grip::datagrip::paths`):
+Non-embedded helpers (repo-relative constants in `datadrift::datagrip::paths`):
 
 | Path | Notes |
 |------|--------|
@@ -78,16 +78,16 @@ Non-embedded helpers (repo-relative constants in `grip::datagrip::paths`):
 ./scripts/validate-dynamic.sh ui-runbook
 ```
 
-## Grip UI
+## DataDrift UI
 
 Two modes (toolbar):
 
 | Mode | Role |
 |------|------|
 | **DB shell** | Data sources, JDBC dialog, explorer tree, table tabs, SQL console (default) |
-| **Audit reports** | Browse embedded `grip::datagrip::reports()` markdown (incl. Phase 2c) |
+| **Audit reports** | Browse embedded `datadrift::datagrip::reports()` markdown (incl. Phase 2c) |
 
-Native drivers (`postgres` / `mysql` / `rusqlite`). Persists under `~/.grip/datasources.json`.
+Native drivers (`postgres` / `mysql` / `rusqlite`). Persists under `~/.datadrift/datasources.json`.
 
 ## Limits
 

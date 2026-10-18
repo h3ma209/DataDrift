@@ -206,7 +206,7 @@ const REPORTS: &[Report] = &[
     Report {
         id: "15-native-drivers",
         file: "15-native-drivers.md",
-        title: "Grip native drivers (pure Rust)",
+        title: "DataDrift native drivers (pure Rust)",
         subsystem: None,
         kind: ReportKind::Guide,
         markdown: include_str!("../../reports/15-native-drivers.md"),

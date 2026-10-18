@@ -1,11 +1,11 @@
 [package]
-name = "grip-ui"
+name = "datadrift-ui"
 version = "0.3.0"
 edition = "2021"
-description = "Grip — modern DataGrip-style database shell (Dioxus)"
+description = "DataDrift — modern DataGrip-style database shell (Dioxus)"
 
 [dependencies]
-grip = { path = "../grip" }
+datadrift = { path = "../datadrift" }
 dioxus = { version = "0.6", features = ["desktop"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

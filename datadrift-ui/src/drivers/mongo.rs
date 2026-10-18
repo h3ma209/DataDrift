@@ -81,7 +81,7 @@ pub fn introspect(ds: &DataSource, p: &ParsedJdbc) -> Result<(Vec<SchemaNode>, u
 }
 
 pub fn query(ds: &DataSource, p: &ParsedJdbc, text: &str, tab_id: u64) -> WorkerResponse {
-    // Grip console for Mongo: JSON find filter on current DB, or `db.collection.find({})` lite.
+    // DataDrift console for Mongo: JSON find filter on current DB, or `db.collection.find({})` lite.
     // Also accept `{...}` as filter on database.collection from `database` field path `db.coll`.
     async_rt::block_on(async {
         let c = match client(ds, p).await {

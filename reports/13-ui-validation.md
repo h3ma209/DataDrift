@@ -150,11 +150,11 @@ Goal: interactive proof of bytecode chain already documented in [12](./12-dynami
 
 ---
 
-## 6. Grip tooling for this report
+## 6. DataDrift tooling for this report
 
 | Tool | Role |
 |------|------|
-| `cargo run -p grip-ui` → **Audit reports** tab | Browse embedded markdown (including this file once recompiled) |
+| `cargo run -p datadrift-ui` → **Audit reports** tab | Browse embedded markdown (including this file once recompiled) |
 | `./scripts/validate-dynamic.sh ui-logs` | Scrape UI/sync-related idea.log lines |
 | `./scripts/validate-dynamic.sh ui-runbook` | Print short click-path checklist to stdout |
 | `./scripts/validate-dynamic.sh index …` | Confirm action/inspection classes still in jar-index |

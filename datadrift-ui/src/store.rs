@@ -7,11 +7,11 @@ pub fn config_path() -> PathBuf {
 }
 
 fn dirs_path() -> PathBuf {
-    if let Ok(p) = std::env::var("GRIP_CONFIG") {
+    if let Ok(p) = std::env::var("DATADRIFT_CONFIG") {
         return PathBuf::from(p);
     }
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let p = PathBuf::from(home).join(".grip");
+    let p = PathBuf::from(home).join(".datadrift");
     let _ = fs::create_dir_all(&p);
     p
 }

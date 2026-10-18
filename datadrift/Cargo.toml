@@ -1,0 +1,10 @@
+[package]
+name = "datadrift"
+version = "0.1.0"
+edition = "2021"
+description = "DataDrift knowledge base — DataGrip REA architecture audit reports"
+license = "MIT"
+
+[lib]
+name = "datadrift"
+path = "src/lib.rs"

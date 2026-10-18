@@ -21,7 +21,7 @@ fn main() {
         .with_cfg(
             dioxus::desktop::Config::new().with_window(
                 dioxus::desktop::WindowBuilder::new()
-                    .with_title("Grip")
+                    .with_title("DataDrift")
                     .with_inner_size(dioxus::desktop::LogicalSize::new(1280.0, 820.0))
                     .with_theme(Some(dioxus::desktop::tao::window::Theme::Dark)),
             ),
@@ -69,7 +69,7 @@ fn App() -> Element {
     let mut log = use_signal(|| {
         vec![(
             true,
-            "Grip — connect a data source, then hit ▶".to_string(),
+            "DataDrift — connect a data source, then hit ▶".to_string(),
         )]
     });
     let mut busy = use_signal(|| false);
@@ -273,7 +273,7 @@ fn App() -> Element {
                 div { class: "brand",
                     div { class: "brand-orb", aria_hidden: "true" }
                     div { class: "brand-text",
-                        div { class: "brand-mark", "Grip" }
+                        div { class: "brand-mark", "DataDrift" }
                         div { class: "brand-sub", "Your data" }
                     }
                 }
@@ -884,7 +884,7 @@ fn SettingsModal(mut ui: Signal<UiSettings>, on_close: EventHandler<()>) -> Elem
                     }
                     p {
                         style: "font-size:12px; color:var(--ink-soft); margin:8px 0 0;",
-                        "Prefs save to ~/.grip/ui_settings.json"
+                        "Prefs save to ~/.datadrift/ui_settings.json"
                     }
                 }
                 div { class: "modal-foot",
