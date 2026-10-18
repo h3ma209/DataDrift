@@ -83,7 +83,7 @@ C) SqlResolve Alt-Enter
 Index check:
    ./scripts/validate-dynamic.sh index 'RefreshModelAction|SelectInDatabaseView|SqlResolveInspection'
 
-Grip UI: cargo run -p grip-ui → Audit reports → 13-ui-validation
+DataDrift UI: cargo run -p datadrift-ui → Audit reports → 13-ui-validation
 EOF
 }
 
