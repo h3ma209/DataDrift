@@ -1,4 +1,4 @@
-# DataGrip REA analysis (DataDrift)
+# (DataDrift) Data doesnt grip here it drift
 
 Static + dynamic reverse-engineering pass on **DataGrip 2026.1.3** (`DB-261.24374.56`) at `/Applications/DataGrip.app`, produced with **REA** and bytecode inspection.
 
